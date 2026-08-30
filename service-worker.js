@@ -8,7 +8,7 @@ const APP_VERSION =
 
 
 const CACHE_NAME =
-  `momo-runtime-shell-v${APP_VERSION}`;
+  `momo-runtime-shell-v${APP_VERSION}-save-action-r1`;
 
 
 const CORE_SHELL = [
