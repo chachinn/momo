@@ -192,7 +192,7 @@
     snapshot.cards.forEach((item) => {
       const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
       if (!due || due < startOfDay(now) || due > end) return;
-      const amount = toPHP(item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
+      const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
       if (amount <= 0) return;
       items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
     });
@@ -218,12 +218,23 @@
     return monthlyBudget > 0 ? Math.max(0, monthlyBudget - currentSpend) : 0;
   }
 
-  function computeSafeToSpend(snapshot, now, spend, upcoming) {
+  function protectedJarRemaining(snapshot, now) {
+  const key = monthKey(now);
+  return savingsGoals(snapshot).reduce((sum, goal) => {
+    if (!goal?.protectedJar || num(goal?.monthlyPlan) <= 0) return sum;
+    const contributed = (Array.isArray(goal?.contributions) ? goal.contributions : [])
+      .filter((item) => text(item?.date).startsWith(key))
+      .reduce((amount, item) => amount + num(item?.amount), 0);
+    return sum + toPHP(Math.max(0, num(goal.monthlyPlan) - contributed), goal?.currency || "PHP");
+  }, 0);
+}
+
+function computeSafeToSpend(snapshot, now, spend, upcoming) {
     const income = monthlyIncome(snapshot, now);
     const budgetLeft = budgetRemaining(snapshot, now, spend);
     const remainingDays = Math.max(1, daysInMonth(now) - now.getDate() + 1);
     const plan = paydayPlan(snapshot);
-    const protectedSavings = num(plan?.savings);
+    const protectedSavings = Math.max(num(plan?.savings), protectedJarRemaining(snapshot, now));
     const upcomingTotal = upcoming.reduce((sum, item) => sum + item.amount, 0);
     const recurringThisMonth = recurringCommitments(snapshot, now);
     const base = income > 0 ? Math.max(0, income - spend) : budgetLeft;
@@ -391,7 +402,8 @@
     if (!goal) return null;
 
     const target = num(goal?.targetAmount || goal?.target || goal?.amount);
-    const current = num(goal?.currentAmount || goal?.saved || goal?.balance || goal?.progressAmount);
+    const contributed = (Array.isArray(goal?.contributions) ? goal.contributions : []).reduce((sum, item) => sum + num(item?.amount), 0);
+    const current = num(goal?.currentAmount ?? goal?.saved ?? goal?.balance ?? goal?.progressAmount ?? contributed);
     const targetDate = parseDate(goal?.targetDate || goal?.date);
     const monthsLeft = Math.max(1, Math.ceil(daysBetween(now, targetDate) / 30.44));
     const neededMonthly = Math.max(0, target - current) / monthsLeft;
@@ -408,7 +420,7 @@
   function debtSuggestion(snapshot) {
     const debts = snapshot.cards.map((item) => {
       const balance = toPHP(item?.remainingBalance || item?.balance || item?.amountOwed || item?.amount || 0, item?.currency || "PHP");
-      const apr = num(item?.apr || item?.interestRate || item?.rate);
+      const apr = num(item?.interestAPR || item?.apr || item?.interestRate || item?.rate);
       return { item, balance, apr };
     }).filter((item) => item.balance > 0);
 
