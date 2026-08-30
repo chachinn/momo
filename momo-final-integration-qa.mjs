@@ -131,14 +131,34 @@ if (await tour.count() && await tour.isVisible()) {
   }
 }
 
+async function dismissContextTip() {
+  const gotIt = page.locator('#contextTipGotIt');
+  if (await gotIt.count() && await gotIt.isVisible()) {
+    await gotIt.click();
+    await page.waitForTimeout(80);
+    return true;
+  }
+  return false;
+}
+
 async function tapVisibleNav(target) {
   const all = page.locator(`[data-nav="${target}"]`);
   for (let i = 0; i < await all.count(); i += 1) {
-    const box = await all.nth(i).boundingBox();
-    if (box && box.x < 390 && box.x + box.width > 0 && box.y < 844 && box.y + box.height > 0) {
-      await all.nth(i).click();
-      await page.waitForTimeout(60);
-      return;
+    const candidate = all.nth(i);
+    const box = await candidate.boundingBox();
+    if (!box || box.x >= 390 || box.x + box.width <= 0 || box.y >= 844 || box.y + box.height <= 0) continue;
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await dismissContextTip();
+      try {
+        await candidate.click({ timeout: 2500 });
+        await page.waitForTimeout(180);
+        await dismissContextTip();
+        return;
+      } catch (error) {
+        const dismissed = await dismissContextTip();
+        if (!dismissed && attempt === 2) throw error;
+      }
     }
   }
   throw new Error(`No visible ${target} navigation control`);
