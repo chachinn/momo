@@ -1,0 +1,208 @@
+name: Momo Add Expense save-action QA
+
+on:
+  push:
+    branches:
+      - fix/add-expense-save-action
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/add-expense-save-action
+          fetch-depth: 0
+
+      - name: Restore Save Expense hierarchy
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          styles_path = Path('styles.css')
+          styles = styles_path.read_text()
+
+          old = '''.screen[data-screen="add"] .expense-form-actions {
+            min-height: 34px;
+            padding: 0;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+          }
+
+          .screen[data-screen="add"] .expense-form-actions > .primary-btn {
+            display: none;
+          }
+
+          .screen[data-screen="add"] .favorite-save-btn {
+            width: auto;
+            min-height: 32px;
+            padding: 6px 11px;
+            border-radius: 11px;
+            font-size: 9px;
+          }
+'''
+
+          new = '''.screen[data-screen="add"] .expense-form-actions {
+            min-height: 40px;
+            padding: 0;
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: center;
+          }
+
+          .screen[data-screen="add"] .expense-form-actions > .primary-btn {
+            width: 100%;
+            min-height: 38px;
+            padding: 7px 14px;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            white-space: nowrap;
+          }
+
+          .screen[data-screen="add"] .favorite-save-btn {
+            width: auto;
+            min-height: 38px;
+            padding: 7px 11px;
+            border-radius: 11px;
+            font-size: 9px;
+            white-space: nowrap;
+          }
+'''
+
+          if old not in styles:
+              raise SystemExit('Expected compact Add Expense action CSS was not found; refusing an unsafe patch.')
+          styles_path.write_text(styles.replace(old, new, 1))
+
+          sw_path = Path('service-worker.js')
+          sw = sw_path.read_text()
+          old_cache = '`momo-runtime-shell-v${APP_VERSION}`'
+          new_cache = '`momo-runtime-shell-v${APP_VERSION}-save-action-r1`'
+          if old_cache not in sw:
+              raise SystemExit('Expected service-worker cache key was not found; refusing an unsafe patch.')
+          sw_path.write_text(sw.replace(old_cache, new_cache, 1))
+          PY
+
+      - name: Static safety checks
+        run: |
+          node --check app.js
+          node --check firebase-momo.js
+          node --check service-worker.js
+          node --check smart-money.js
+          node --check scripts/send-reminders.mjs
+          grep -q 'const DB_VERSION = 4;' app.js
+          grep -q 'momo-notifications' firebase-momo.js
+          grep -q 'CLOUD_AUTO_BACKUP_HOUR = 8' firebase-momo.js
+          grep -q 'Save Expense' index.html
+          grep -q 'saveExpenseTop' index.html
+          grep -q 'Save as Template' index.html
+          grep -q 'momo-runtime-shell-v${APP_VERSION}-save-action-r1' service-worker.js
+          ! grep -A14 'screen\[data-screen="add"\] \.expense-form-actions > \.primary-btn' styles.css | grep -q 'display: none'
+          git diff --check
+
+      - name: Browser setup
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+
+      - name: Mobile Add Expense QA
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          cat > momo-add-save-qa.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({
+            viewport: { width: 390, height: 844 },
+            isMobile: true,
+            hasTouch: true
+          });
+          const page = await context.newPage();
+          const errors = [];
+          page.on('pageerror', (error) => errors.push(String(error)));
+
+          await page.goto('http://127.0.0.1:4173/index.html', { waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(500);
+
+          await page.evaluate(() => {
+            document.querySelectorAll('.screen').forEach((screen) => screen.classList.remove('active'));
+            const add = document.querySelector('[data-screen="add"]');
+            add?.classList.add('active');
+            if (add) add.hidden = false;
+            for (const selector of ['#welcomeTour', '#contextTipModal']) {
+              const el = document.querySelector(selector);
+              if (el) {
+                el.hidden = true;
+                el.style.display = 'none';
+              }
+            }
+            document.body.classList.remove('tutorial-open', 'modal-open', 'drawer-open');
+          });
+
+          const layout = await page.evaluate(() => {
+            const screen = document.querySelector('[data-screen="add"]');
+            const primary = screen?.querySelector('.expense-form-actions > .primary-btn');
+            const template = screen?.querySelector('.favorite-save-btn');
+            const actions = screen?.querySelector('.expense-form-actions');
+            const topSave = document.getElementById('saveExpenseTop');
+            const primaryBox = primary?.getBoundingClientRect();
+            const templateBox = template?.getBoundingClientRect();
+            return {
+              screenHeight: screen?.scrollHeight || 0,
+              primaryText: primary?.textContent?.trim() || '',
+              primaryType: primary?.getAttribute('type') || '',
+              primaryDisplay: primary ? getComputedStyle(primary).display : 'missing',
+              primaryHeight: primaryBox?.height || 0,
+              templateText: template?.textContent?.trim() || '',
+              templateDisplay: template ? getComputedStyle(template).display : 'missing',
+              templateHeight: templateBox?.height || 0,
+              actionsDisplay: actions ? getComputedStyle(actions).display : 'missing',
+              topSaveExists: Boolean(topSave),
+              overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+            };
+          });
+
+          assert.equal(layout.primaryText, 'Save Expense');
+          assert.equal(layout.primaryType, 'submit');
+          assert.notEqual(layout.primaryDisplay, 'none');
+          assert.ok(layout.primaryHeight >= 36);
+          assert.match(layout.templateText, /Save as Template/);
+          assert.notEqual(layout.templateDisplay, 'none');
+          assert.ok(layout.templateHeight >= 36);
+          assert.equal(layout.actionsDisplay, 'grid');
+          assert.equal(layout.topSaveExists, true);
+          assert.ok(layout.overflow <= 1);
+          assert.ok(layout.screenHeight <= 680, `Add Expense core screen is too tall: ${layout.screenHeight}px`);
+          assert.deepEqual(errors, []);
+
+          console.log(`PASS Add Expense save hierarchy: ${layout.screenHeight}px core screen`);
+          await browser.close();
+          EOF
+          node momo-add-save-qa.mjs
+
+      - name: Clean temporary QA and commit production files
+        run: |
+          rm -rf node_modules
+          rm -f package.json package-lock.json momo-add-save-qa.mjs
+          rm -f .github/workflows/momo-add-expense-save-qa.yml
+          test ! -e node_modules
+          test ! -e package.json
+          test ! -e package-lock.json
+          test ! -e momo-add-save-qa.mjs
+          test ! -e .github/workflows/momo-add-expense-save-qa.yml
+          git config user.name "Momo Release Bot"
+          git config user.email "momo-release-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m "Fix Add Expense save action hierarchy"
+          git push origin HEAD:fix/add-expense-save-action
