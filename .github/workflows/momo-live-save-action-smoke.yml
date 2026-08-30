@@ -1,0 +1,42 @@
+name: Momo live Save Expense smoke
+
+on:
+  push:
+    branches:
+      - fix/add-expense-save-action
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/add-expense-save-action
+          fetch-depth: 0
+
+      - name: Verify deployed Add Expense hierarchy
+        run: |
+          set -euo pipefail
+          BASE="https://chachinn.github.io/momo"
+          Q="?smoke=${GITHUB_RUN_ID}"
+          curl --fail --silent --show-error --location --retry 3 "$BASE/styles.css$Q" -o /tmp/live-styles.css
+          curl --fail --silent --show-error --location --retry 3 "$BASE/service-worker.js$Q" -o /tmp/live-sw.js
+          cmp styles.css /tmp/live-styles.css
+          cmp service-worker.js /tmp/live-sw.js
+          grep -A14 'screen\[data-screen="add"\] \.expense-form-actions > \.primary-btn' /tmp/live-styles.css | grep -q 'display: inline-flex'
+          ! grep -A14 'screen\[data-screen="add"\] \.expense-form-actions > \.primary-btn' /tmp/live-styles.css | grep -q 'display: none'
+          grep -Fq 'momo-runtime-shell-v${APP_VERSION}-save-action-r1' /tmp/live-sw.js
+          echo "PASS live Save Expense hierarchy"
+
+      - name: Self-clean smoke workflow
+        run: |
+          rm -f .github/workflows/momo-live-save-action-smoke.yml
+          git config user.name "Momo Release Bot"
+          git config user.email "momo-release-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Remove temporary live save-action smoke test"
+          git push origin HEAD:fix/add-expense-save-action
