@@ -1,0 +1,438 @@
+name: Momo compact Add Expense QA
+
+on:
+  push:
+    branches:
+      - agent/momo-smart-money-v1-11
+    paths:
+      - .github/workflows/momo-add-expense-compact-qa.yml
+
+permissions:
+  contents: write
+
+jobs:
+  compact-add-expense:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/momo-smart-money-v1-11
+          fetch-depth: 0
+
+      - name: Apply compact Add Expense UX
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # ---------- app.js ----------
+          app_path = Path('app.js')
+          app = app_path.read_text()
+
+          local_key_anchor = '''  converterB:\n    "momo_converter_currency_b",\n'''
+          local_key_replacement = '''  converterB:\n    "momo_converter_currency_b",\n\n  expenseCurrency:\n    "momo_expense_last_currency",\n'''
+          if 'momo_expense_last_currency' not in app:
+              if app.count(local_key_anchor) != 1:
+                  raise SystemExit('Could not safely add expense currency local key')
+              app = app.replace(local_key_anchor, local_key_replacement, 1)
+
+          default_currency_old = '''  if (\n    currencySelect\n  ) {\n\n    currencySelect.value =\n      "PHP";\n\n  }\n'''
+          default_currency_new = '''  if (\n    currencySelect\n  ) {\n\n    const lastExpenseCurrency =\n      localStorage.getItem(\n        LOCAL_KEYS.expenseCurrency\n      );\n\n    currencySelect.value =\n      lastExpenseCurrency &&\n      EXCHANGE_RATES[\n        lastExpenseCurrency\n      ]\n        ? lastExpenseCurrency\n        : "PHP";\n\n  }\n'''
+          if 'const lastExpenseCurrency' not in app:
+              if app.count(default_currency_old) != 1:
+                  raise SystemExit('Could not safely replace Add Expense default currency')
+              app = app.replace(default_currency_old, default_currency_new, 1)
+
+          listener_old = '''currencySelect?.addEventListener(\n  "change",\n  updateExpenseConversion\n);\n'''
+          listener_new = '''currencySelect?.addEventListener(\n  "change",\n  () => {\n\n    if (\n      currencySelect.value &&\n      EXCHANGE_RATES[\n        currencySelect.value\n      ]\n    ) {\n\n      localStorage.setItem(\n        LOCAL_KEYS.expenseCurrency,\n        currencySelect.value\n      );\n\n    }\n\n    updateExpenseConversion();\n\n  }\n);\n'''
+          if 'LOCAL_KEYS.expenseCurrency,' not in app:
+              if app.count(listener_old) != 1:
+                  raise SystemExit('Could not safely patch expense currency listener')
+              app = app.replace(listener_old, listener_new, 1)
+
+          empty_photo_old = '      : "📸";'
+          empty_photo_new = '      : `<span class="expense-photo-icon" aria-hidden="true">📸</span><span class="expense-photo-label">Add photo</span>`;'
+          if 'expense-photo-label' not in app:
+              if app.count(empty_photo_old) != 1:
+                  raise SystemExit('Could not safely patch compact photo empty state')
+              app = app.replace(empty_photo_old, empty_photo_new, 1)
+
+          app_path.write_text(app)
+
+          # ---------- index.html ----------
+          index_path = Path('index.html')
+          html = index_path.read_text()
+
+          old_photo = '''          <section class="photo-upload">\n            <label\n              class="photo-preview"\n              id="photoPreview"\n              for="expensePhoto"\n            >\n              📸\n            </label>\n\n            <label\n              class="photo-add"\n              for="expensePhoto"\n            >\n              <span>＋</span>\n              Add Photo\n            </label>\n\n            <input\n              id="expensePhoto"\n              type="file"\n              accept="image/*"\n              hidden\n            >\n          </section>\n'''
+          new_photo = '''          <section class="photo-upload expense-photo-upload">\n            <label\n              class="expense-photo-compact"\n              id="photoPreview"\n              for="expensePhoto"\n              aria-label="Add or change expense photo"\n            >\n              <span class="expense-photo-icon" aria-hidden="true">📸</span>\n              <span class="expense-photo-label">Add photo</span>\n            </label>\n\n            <input\n              id="expensePhoto"\n              type="file"\n              accept="image/*"\n              hidden\n            >\n          </section>\n'''
+          if 'class="expense-photo-compact"' not in html:
+              if html.count(old_photo) != 1:
+                  raise SystemExit('Could not safely replace duplicate photo controls')
+              html = html.replace(old_photo, new_photo, 1)
+
+          if 'class="expense-more-details"' not in html:
+              start_marker = '            <div class="merchant-memory-field">'
+              notes_marker = '            <label class="form-row form-row-notes">'
+              start = html.find(start_marker)
+              notes_start = html.find(notes_marker, start)
+              if start < 0 or notes_start < 0:
+                  raise SystemExit('Could not find optional Add Expense fields')
+              notes_end = html.find('            </label>', notes_start)
+              if notes_end < 0:
+                  raise SystemExit('Could not find end of expense notes field')
+              notes_end += len('            </label>')
+              optional_block = html[start:notes_end]
+              indented = '\n'.join('    ' + line if line else line for line in optional_block.split('\n'))
+              wrapped = '''            <details class="expense-more-details">\n              <summary>\n                <span>More details</span>\n                <small>Location &amp; notes</small>\n              </summary>\n              <div class="expense-more-details-body">\n''' + indented + '''\n              </div>\n            </details>'''
+              html = html[:start] + wrapped + html[notes_end:]
+
+          index_path.write_text(html)
+
+          # ---------- styles.css ----------
+          css_path = Path('styles.css')
+          css = css_path.read_text()
+          marker = '/* MOMO COMPACT ADD EXPENSE */'
+          if marker not in css:
+              css += r'''
+
+/* MOMO COMPACT ADD EXPENSE */
+.screen[data-screen="add"] {
+  padding: 12px 14px 16px;
+}
+
+.screen[data-screen="add"] .page-heading.compact {
+  margin-bottom: 8px;
+}
+
+.screen[data-screen="add"] .page-heading h1 {
+  font-size: clamp(28px, 7vw, 32px);
+}
+
+.screen[data-screen="add"] #expenseForm {
+  display: grid;
+  gap: 8px;
+}
+
+.screen[data-screen="add"] #expenseForm > .card,
+.screen[data-screen="add"] #expenseForm > .photo-upload,
+.screen[data-screen="add"] #expenseForm > .expense-form-actions {
+  margin-bottom: 0;
+}
+
+.screen[data-screen="add"] .expense-photo-upload {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0;
+}
+
+.expense-photo-compact {
+  width: auto;
+  min-width: 108px;
+  max-width: 148px;
+  height: 38px;
+  padding: 3px 10px;
+  border: 1px dashed rgba(222, 143, 155, 0.58);
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--rose);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.expense-photo-compact .expense-photo-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.expense-photo-compact .expense-photo-label {
+  white-space: nowrap;
+}
+
+.expense-photo-compact img {
+  width: 32px;
+  height: 32px;
+  display: block;
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.screen[data-screen="add"] .form-card {
+  padding: 9px 13px;
+  border-radius: 18px;
+}
+
+.screen[data-screen="add"] .form-card .label {
+  margin-bottom: 1px;
+  font-size: 10px;
+}
+
+.screen[data-screen="add"] .amount-input-row {
+  min-height: 38px;
+}
+
+.screen[data-screen="add"] #amount {
+  font-size: 25px;
+  line-height: 1.05;
+}
+
+.screen[data-screen="add"] #currency {
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.screen[data-screen="add"] .converted {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.screen[data-screen="add"] .form-list {
+  padding: 0 13px;
+  border-radius: 18px;
+}
+
+.screen[data-screen="add"] .form-row {
+  min-height: 42px;
+  padding: 3px 0;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.screen[data-screen="add"] .form-row > span {
+  font-size: 10px;
+}
+
+.screen[data-screen="add"] .form-row input,
+.screen[data-screen="add"] .form-row select,
+.screen[data-screen="add"] .form-row textarea {
+  min-height: 34px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 13px;
+}
+
+.screen[data-screen="add"] .form-row textarea {
+  min-height: 52px;
+  resize: vertical;
+}
+
+.screen[data-screen="add"] .field-optional {
+  font-size: 8px;
+}
+
+.expense-more-details {
+  border-top: 1px solid var(--border);
+}
+
+.expense-more-details > summary {
+  min-height: 41px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.expense-more-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.expense-more-details > summary::after {
+  content: "＋";
+  color: var(--rose);
+  font-size: 15px;
+}
+
+.expense-more-details[open] > summary::after {
+  content: "−";
+}
+
+.expense-more-details > summary small {
+  margin-left: auto;
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.expense-more-details-body .merchant-memory-field,
+.expense-more-details-body .form-row-notes {
+  margin: 0;
+}
+
+.screen[data-screen="add"] .expense-form-actions {
+  min-height: 34px;
+  padding: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.screen[data-screen="add"] .expense-form-actions > .primary-btn {
+  display: none;
+}
+
+.screen[data-screen="add"] .favorite-save-btn {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 11px;
+  border-radius: 11px;
+  font-size: 9px;
+}
+
+@media (max-height: 760px) {
+  .screen[data-screen="add"] {
+    padding-top: 8px;
+  }
+
+  .screen[data-screen="add"] .page-heading.compact {
+    margin-bottom: 5px;
+  }
+
+  .screen[data-screen="add"] #expenseForm {
+    gap: 6px;
+  }
+
+  .screen[data-screen="add"] .form-row {
+    min-height: 39px;
+  }
+}
+'''
+          css_path.write_text(css)
+
+      - name: Static safety checks
+        run: |
+          node --check app.js
+          node --check firebase-momo.js
+          node --check service-worker.js
+          node --check smart-money.js
+          node --check scripts/send-reminders.mjs
+          grep -q 'const DB_VERSION = 4;' app.js
+          grep -q 'momo_expense_last_currency' app.js
+          grep -q 'expense-photo-compact' index.html
+          grep -q 'expense-more-details' index.html
+          test "$(grep -o 'for="expensePhoto"' index.html | wc -l)" -eq 1
+          ! grep -q 'class="photo-add"' index.html
+          ! grep -q 'new MutationObserver' smart-money.js
+          grep -q 'momo-notifications' firebase-momo.js
+          grep -q 'CLOUD_AUTO_BACKUP_HOUR = 8' firebase-momo.js
+          git diff --check
+
+      - name: Browser setup
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+
+      - name: Compact mobile Add Expense QA
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          cat > momo-add-expense-qa.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+
+          const browser = await chromium.launch({headless:true});
+          const context = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+          const page = await context.newPage();
+          const errors=[];
+          page.on('pageerror',e=>errors.push(String(e)));
+          await page.goto('http://127.0.0.1:4173/index.html',{waitUntil:'domcontentloaded'});
+          await page.waitForTimeout(600);
+
+          const tour=page.locator('#welcomeTour');
+          if(await tour.count()&&await tour.isVisible()){
+            for(let i=0;i<10&&await tour.isVisible();i++){
+              const bs=tour.locator('button:visible');
+              const pref=bs.filter({hasText:/skip|next|done|finish|start|got it|close/i});
+              await (await pref.count()?pref.last():bs.last()).click();
+              await page.waitForTimeout(50);
+            }
+          }
+
+          await page.evaluate(()=>localStorage.setItem('momo_expense_last_currency','JPY'));
+
+          async function tapVisibleNav(target){
+            const all=page.locator(`[data-nav="${target}"]`);
+            for(let i=0;i<await all.count();i++){
+              const b=await all.nth(i).boundingBox();
+              if(b&&b.x<390&&b.x+b.width>0&&b.y<844&&b.y+b.height>0){await all.nth(i).click();return;}
+            }
+            throw new Error(`No visible ${target} navigation control`);
+          }
+
+          await tapVisibleNav('add');
+          await page.waitForTimeout(120);
+          assert.equal(await page.locator('#currency').inputValue(),'JPY');
+
+          await page.selectOption('#currency','USD');
+          assert.equal(await page.evaluate(()=>localStorage.getItem('momo_expense_last_currency')),'USD');
+          await tapVisibleNav('home');
+          await tapVisibleNav('add');
+          await page.waitForTimeout(100);
+          assert.equal(await page.locator('#currency').inputValue(),'USD');
+
+          const layout=await page.evaluate(()=>{
+            const add=document.querySelector('[data-screen="add"]');
+            const photo=document.querySelector('.expense-photo-compact');
+            const more=document.querySelector('.expense-more-details');
+            const topSave=document.getElementById('saveExpenseTop');
+            const bottomSave=document.querySelector('[data-screen="add"] .expense-form-actions > .primary-btn');
+            return {
+              addHeight:add?.scrollHeight||0,
+              photoHeight:photo?.getBoundingClientRect().height||0,
+              photoLabels:document.querySelectorAll('label[for="expensePhoto"]').length,
+              oldPhotoAdd:document.querySelectorAll('.photo-add').length,
+              moreOpen:Boolean(more?.open),
+              locationInside:Boolean(more?.querySelector('#expenseLocation')),
+              notesInside:Boolean(more?.querySelector('#expenseNotes')),
+              topSaveVisible:Boolean(topSave&&topSave.getBoundingClientRect().height>0),
+              bottomSaveDisplay:bottomSave?getComputedStyle(bottomSave).display:'missing',
+              overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
+            };
+          });
+
+          assert.equal(layout.photoLabels,1);
+          assert.equal(layout.oldPhotoAdd,0);
+          assert.ok(layout.photoHeight<=44);
+          assert.equal(layout.moreOpen,false);
+          assert.equal(layout.locationInside,true);
+          assert.equal(layout.notesInside,true);
+          assert.equal(layout.topSaveVisible,true);
+          assert.equal(layout.bottomSaveDisplay,'none');
+          assert.ok(layout.overflow<=1);
+          assert.ok(layout.addHeight<=680,`Compact Add screen is still too tall: ${layout.addHeight}px`);
+
+          await page.locator('.expense-more-details > summary').click();
+          assert.equal(await page.locator('.expense-more-details').getAttribute('open'),'');
+          assert.ok(await page.locator('#expenseLocation').isVisible());
+          assert.ok(await page.locator('#expenseNotes').isVisible());
+          assert.deepEqual(errors,[]);
+
+          console.log(`PASS compact Add Expense QA: ${layout.addHeight}px core screen, ${layout.photoHeight}px photo control`);
+          await browser.close();
+          EOF
+          node momo-add-expense-qa.mjs
+
+      - name: Clean QA artifacts and publish UX change
+        run: |
+          rm -rf node_modules
+          rm -f momo-add-expense-qa.mjs package.json package-lock.json .github/workflows/momo-add-expense-compact-qa.yml
+          test ! -e node_modules
+          test ! -e momo-add-expense-qa.mjs
+          test ! -e package.json
+          test ! -e package-lock.json
+          test ! -e .github/workflows/momo-add-expense-compact-qa.yml
+          git config user.name "Momo Release Bot"
+          git config user.email "momo-release-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m "Compact Add Expense and remember currency"
+          git push origin HEAD:agent/momo-smart-money-v1-11
