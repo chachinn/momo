@@ -23,288 +23,60 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import base64
 
-          # ---------- app.js ----------
           app_path = Path('app.js')
           app = app_path.read_text()
-
-          local_key_anchor = '''  converterB:\n    "momo_converter_currency_b",\n'''
-          local_key_replacement = '''  converterB:\n    "momo_converter_currency_b",\n\n  expenseCurrency:\n    "momo_expense_last_currency",\n'''
+          anchor = '  converterB:\n    "momo_converter_currency_b",\n'
+          replacement = '  converterB:\n    "momo_converter_currency_b",\n\n  expenseCurrency:\n    "momo_expense_last_currency",\n'
           if 'momo_expense_last_currency' not in app:
-              if app.count(local_key_anchor) != 1:
-                  raise SystemExit('Could not safely add expense currency local key')
-              app = app.replace(local_key_anchor, local_key_replacement, 1)
+              if app.count(anchor) != 1: raise SystemExit('expense currency key anchor mismatch')
+              app = app.replace(anchor, replacement, 1)
 
-          default_currency_old = '''  if (\n    currencySelect\n  ) {\n\n    currencySelect.value =\n      "PHP";\n\n  }\n'''
-          default_currency_new = '''  if (\n    currencySelect\n  ) {\n\n    const lastExpenseCurrency =\n      localStorage.getItem(\n        LOCAL_KEYS.expenseCurrency\n      );\n\n    currencySelect.value =\n      lastExpenseCurrency &&\n      EXCHANGE_RATES[\n        lastExpenseCurrency\n      ]\n        ? lastExpenseCurrency\n        : "PHP";\n\n  }\n'''
+          old = '  if (\n    currencySelect\n  ) {\n\n    currencySelect.value =\n      "PHP";\n\n  }\n'
+          new = '  if (\n    currencySelect\n  ) {\n\n    const lastExpenseCurrency =\n      localStorage.getItem(\n        LOCAL_KEYS.expenseCurrency\n      );\n\n    currencySelect.value =\n      lastExpenseCurrency &&\n      EXCHANGE_RATES[\n        lastExpenseCurrency\n      ]\n        ? lastExpenseCurrency\n        : "PHP";\n\n  }\n'
           if 'const lastExpenseCurrency' not in app:
-              if app.count(default_currency_old) != 1:
-                  raise SystemExit('Could not safely replace Add Expense default currency')
-              app = app.replace(default_currency_old, default_currency_new, 1)
+              if app.count(old) != 1: raise SystemExit('default currency anchor mismatch')
+              app = app.replace(old, new, 1)
 
-          listener_old = '''currencySelect?.addEventListener(\n  "change",\n  updateExpenseConversion\n);\n'''
-          listener_new = '''currencySelect?.addEventListener(\n  "change",\n  () => {\n\n    if (\n      currencySelect.value &&\n      EXCHANGE_RATES[\n        currencySelect.value\n      ]\n    ) {\n\n      localStorage.setItem(\n        LOCAL_KEYS.expenseCurrency,\n        currencySelect.value\n      );\n\n    }\n\n    updateExpenseConversion();\n\n  }\n);\n'''
+          old = 'currencySelect?.addEventListener(\n  "change",\n  updateExpenseConversion\n);\n'
+          new = 'currencySelect?.addEventListener(\n  "change",\n  () => {\n\n    if (\n      currencySelect.value &&\n      EXCHANGE_RATES[\n        currencySelect.value\n      ]\n    ) {\n\n      localStorage.setItem(\n        LOCAL_KEYS.expenseCurrency,\n        currencySelect.value\n      );\n\n    }\n\n    updateExpenseConversion();\n\n  }\n);\n'
           if 'LOCAL_KEYS.expenseCurrency,' not in app:
-              if app.count(listener_old) != 1:
-                  raise SystemExit('Could not safely patch expense currency listener')
-              app = app.replace(listener_old, listener_new, 1)
+              if app.count(old) != 1: raise SystemExit('currency listener anchor mismatch')
+              app = app.replace(old, new, 1)
 
-          empty_photo_old = '      : "📸";'
-          empty_photo_new = '      : `<span class="expense-photo-icon" aria-hidden="true">📸</span><span class="expense-photo-label">Add photo</span>`;'
           if 'expense-photo-label' not in app:
-              if app.count(empty_photo_old) != 1:
-                  raise SystemExit('Could not safely patch compact photo empty state')
-              app = app.replace(empty_photo_old, empty_photo_new, 1)
-
+              old = '      : "📸";'
+              new = '      : `<span class="expense-photo-icon" aria-hidden="true">📸</span><span class="expense-photo-label">Add photo</span>`;'
+              if app.count(old) != 1: raise SystemExit('photo render anchor mismatch')
+              app = app.replace(old, new, 1)
           app_path.write_text(app)
 
-          # ---------- index.html ----------
           index_path = Path('index.html')
           html = index_path.read_text()
-
           old_photo = '''          <section class="photo-upload">\n            <label\n              class="photo-preview"\n              id="photoPreview"\n              for="expensePhoto"\n            >\n              📸\n            </label>\n\n            <label\n              class="photo-add"\n              for="expensePhoto"\n            >\n              <span>＋</span>\n              Add Photo\n            </label>\n\n            <input\n              id="expensePhoto"\n              type="file"\n              accept="image/*"\n              hidden\n            >\n          </section>\n'''
           new_photo = '''          <section class="photo-upload expense-photo-upload">\n            <label\n              class="expense-photo-compact"\n              id="photoPreview"\n              for="expensePhoto"\n              aria-label="Add or change expense photo"\n            >\n              <span class="expense-photo-icon" aria-hidden="true">📸</span>\n              <span class="expense-photo-label">Add photo</span>\n            </label>\n\n            <input\n              id="expensePhoto"\n              type="file"\n              accept="image/*"\n              hidden\n            >\n          </section>\n'''
           if 'class="expense-photo-compact"' not in html:
-              if html.count(old_photo) != 1:
-                  raise SystemExit('Could not safely replace duplicate photo controls')
+              if html.count(old_photo) != 1: raise SystemExit('photo HTML anchor mismatch')
               html = html.replace(old_photo, new_photo, 1)
 
           if 'class="expense-more-details"' not in html:
-              start_marker = '            <div class="merchant-memory-field">'
-              notes_marker = '            <label class="form-row form-row-notes">'
-              start = html.find(start_marker)
-              notes_start = html.find(notes_marker, start)
-              if start < 0 or notes_start < 0:
-                  raise SystemExit('Could not find optional Add Expense fields')
-              notes_end = html.find('            </label>', notes_start)
-              if notes_end < 0:
-                  raise SystemExit('Could not find end of expense notes field')
-              notes_end += len('            </label>')
-              optional_block = html[start:notes_end]
-              indented = '\n'.join('    ' + line if line else line for line in optional_block.split('\n'))
-              wrapped = '''            <details class="expense-more-details">\n              <summary>\n                <span>More details</span>\n                <small>Location &amp; notes</small>\n              </summary>\n              <div class="expense-more-details-body">\n''' + indented + '''\n              </div>\n            </details>'''
-              html = html[:start] + wrapped + html[notes_end:]
-
+              start = html.find('            <div class="merchant-memory-field">')
+              notes = html.find('            <label class="form-row form-row-notes">', start)
+              if start < 0 or notes < 0: raise SystemExit('optional field anchors missing')
+              end = html.find('            </label>', notes)
+              if end < 0: raise SystemExit('notes end missing')
+              end += len('            </label>')
+              block = html[start:end]
+              indented = '\n'.join('    ' + line if line else line for line in block.split('\n'))
+              wrapped = '            <details class="expense-more-details">\n              <summary>\n                <span>More details</span>\n                <small>Location &amp; notes</small>\n              </summary>\n              <div class="expense-more-details-body">\n' + indented + '\n              </div>\n            </details>'
+              html = html[:start] + wrapped + html[end:]
           index_path.write_text(html)
 
-          # ---------- styles.css ----------
           css_path = Path('styles.css')
           css = css_path.read_text()
-          marker = '/* MOMO COMPACT ADD EXPENSE */'
-          if marker not in css:
-              css += r'''
-
-/* MOMO COMPACT ADD EXPENSE */
-.screen[data-screen="add"] {
-  padding: 12px 14px 16px;
-}
-
-.screen[data-screen="add"] .page-heading.compact {
-  margin-bottom: 8px;
-}
-
-.screen[data-screen="add"] .page-heading h1 {
-  font-size: clamp(28px, 7vw, 32px);
-}
-
-.screen[data-screen="add"] #expenseForm {
-  display: grid;
-  gap: 8px;
-}
-
-.screen[data-screen="add"] #expenseForm > .card,
-.screen[data-screen="add"] #expenseForm > .photo-upload,
-.screen[data-screen="add"] #expenseForm > .expense-form-actions {
-  margin-bottom: 0;
-}
-
-.screen[data-screen="add"] .expense-photo-upload {
-  display: flex;
-  justify-content: flex-end;
-  margin: 0;
-}
-
-.expense-photo-compact {
-  width: auto;
-  min-width: 108px;
-  max-width: 148px;
-  height: 38px;
-  padding: 3px 10px;
-  border: 1px dashed rgba(222, 143, 155, 0.58);
-  border-radius: 13px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.74);
-  color: var(--rose);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.expense-photo-compact .expense-photo-icon {
-  font-size: 16px;
-  line-height: 1;
-}
-
-.expense-photo-compact .expense-photo-label {
-  white-space: nowrap;
-}
-
-.expense-photo-compact img {
-  width: 32px;
-  height: 32px;
-  display: block;
-  border-radius: 9px;
-  object-fit: cover;
-}
-
-.screen[data-screen="add"] .form-card {
-  padding: 9px 13px;
-  border-radius: 18px;
-}
-
-.screen[data-screen="add"] .form-card .label {
-  margin-bottom: 1px;
-  font-size: 10px;
-}
-
-.screen[data-screen="add"] .amount-input-row {
-  min-height: 38px;
-}
-
-.screen[data-screen="add"] #amount {
-  font-size: 25px;
-  line-height: 1.05;
-}
-
-.screen[data-screen="add"] #currency {
-  min-height: 34px;
-  font-size: 13px;
-}
-
-.screen[data-screen="add"] .converted {
-  margin: 0;
-  font-size: 10px;
-  line-height: 1.2;
-}
-
-.screen[data-screen="add"] .form-list {
-  padding: 0 13px;
-  border-radius: 18px;
-}
-
-.screen[data-screen="add"] .form-row {
-  min-height: 42px;
-  padding: 3px 0;
-  grid-template-columns: 92px minmax(0, 1fr);
-  gap: 8px;
-}
-
-.screen[data-screen="add"] .form-row > span {
-  font-size: 10px;
-}
-
-.screen[data-screen="add"] .form-row input,
-.screen[data-screen="add"] .form-row select,
-.screen[data-screen="add"] .form-row textarea {
-  min-height: 34px;
-  padding-top: 5px;
-  padding-bottom: 5px;
-  font-size: 13px;
-}
-
-.screen[data-screen="add"] .form-row textarea {
-  min-height: 52px;
-  resize: vertical;
-}
-
-.screen[data-screen="add"] .field-optional {
-  font-size: 8px;
-}
-
-.expense-more-details {
-  border-top: 1px solid var(--border);
-}
-
-.expense-more-details > summary {
-  min-height: 41px;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  color: var(--text-soft);
-  cursor: pointer;
-  font-size: 10px;
-}
-
-.expense-more-details > summary::-webkit-details-marker {
-  display: none;
-}
-
-.expense-more-details > summary::after {
-  content: "＋";
-  color: var(--rose);
-  font-size: 15px;
-}
-
-.expense-more-details[open] > summary::after {
-  content: "−";
-}
-
-.expense-more-details > summary small {
-  margin-left: auto;
-  color: var(--text-soft);
-  font-size: 9px;
-  font-weight: 400;
-}
-
-.expense-more-details-body .merchant-memory-field,
-.expense-more-details-body .form-row-notes {
-  margin: 0;
-}
-
-.screen[data-screen="add"] .expense-form-actions {
-  min-height: 34px;
-  padding: 0;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.screen[data-screen="add"] .expense-form-actions > .primary-btn {
-  display: none;
-}
-
-.screen[data-screen="add"] .favorite-save-btn {
-  width: auto;
-  min-height: 32px;
-  padding: 6px 11px;
-  border-radius: 11px;
-  font-size: 9px;
-}
-
-@media (max-height: 760px) {
-  .screen[data-screen="add"] {
-    padding-top: 8px;
-  }
-
-  .screen[data-screen="add"] .page-heading.compact {
-    margin-bottom: 5px;
-  }
-
-  .screen[data-screen="add"] #expenseForm {
-    gap: 6px;
-  }
-
-  .screen[data-screen="add"] .form-row {
-    min-height: 39px;
-  }
-}
-'''
+          if '/* MOMO COMPACT ADD EXPENSE */' not in css:
+              css += base64.b64decode('Ci8qIE1PTU8gQ09NUEFDVCBBREQgRVhQRU5TRSAqLwouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSB7CiAgcGFkZGluZzogMTJweCAxNHB4IDE2cHg7Cn0KCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdIC5wYWdlLWhlYWRpbmcuY29tcGFjdCB7CiAgbWFyZ2luLWJvdHRvbTogOHB4Owp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAucGFnZS1oZWFkaW5nIGgxIHsKICBmb250LXNpemU6IGNsYW1wKDI4cHgsIDd2dywgMzJweCk7Cn0KCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdICNleHBlbnNlRm9ybSB7CiAgZGlzcGxheTogZ3JpZDsKICBnYXA6IDhweDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gI2V4cGVuc2VGb3JtID4gLmNhcmQsCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdICNleHBlbnNlRm9ybSA+IC5waG90by11cGxvYWQsCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdICNleHBlbnNlRm9ybSA+IC5leHBlbnNlLWZvcm0tYWN0aW9ucyB7CiAgbWFyZ2luLWJvdHRvbTogMDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmV4cGVuc2UtcGhvdG8tdXBsb2FkIHsKICBkaXNwbGF5OiBmbGV4OwogIGp1c3RpZnktY29udGVudDogZmxleC1lbmQ7CiAgbWFyZ2luOiAwOwp9CgouZXhwZW5zZS1waG90by1jb21wYWN0IHsKICB3aWR0aDogYXV0bzsKICBtaW4td2lkdGg6IDEwOHB4OwogIG1heC13aWR0aDogMTQ4cHg7CiAgaGVpZ2h0OiAzOHB4OwogIHBhZGRpbmc6IDNweCAxMHB4OwogIGJvcmRlcjogMXB4IGRhc2hlZCByZ2JhKDIyMiwgMTQzLCAxNTUsIDAuNTgpOwogIGJvcmRlci1yYWRpdXM6IDEzcHg7CiAgZGlzcGxheTogaW5saW5lLWZsZXg7CiAgYWxpZ24taXRlbXM6IGNlbnRlcjsKICBqdXN0aWZ5LWNvbnRlbnQ6IGNlbnRlcjsKICBnYXA6IDdweDsKICBvdmVyZmxvdzogaGlkZGVuOwogIGJhY2tncm91bmQ6IHJnYmEoMjU1LCAyNTUsIDI1NSwgMC43NCk7CiAgY29sb3I6IHZhcigtLXJvc2UpOwogIGZvbnQtc2l6ZTogMTFweDsKICBmb250LXdlaWdodDogNzAwOwogIGN1cnNvcjogcG9pbnRlcjsKfQoKLmV4cGVuc2UtcGhvdG8tY29tcGFjdCAuZXhwZW5zZS1waG90by1pY29uIHsKICBmb250LXNpemU6IDE2cHg7CiAgbGluZS1oZWlnaHQ6IDE7Cn0KCi5leHBlbnNlLXBob3RvLWNvbXBhY3QgLmV4cGVuc2UtcGhvdG8tbGFiZWwgewogIHdoaXRlLXNwYWNlOiBub3dyYXA7Cn0KCi5leHBlbnNlLXBob3RvLWNvbXBhY3QgaW1nIHsKICB3aWR0aDogMzJweDsKICBoZWlnaHQ6IDMycHg7CiAgZGlzcGxheTogYmxvY2s7CiAgYm9yZGVyLXJhZGl1czogOXB4OwogIG9iamVjdC1maXQ6IGNvdmVyOwp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZm9ybS1jYXJkIHsKICBwYWRkaW5nOiA5cHggMTNweDsKICBib3JkZXItcmFkaXVzOiAxOHB4Owp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZm9ybS1jYXJkIC5sYWJlbCB7CiAgbWFyZ2luLWJvdHRvbTogMXB4OwogIGZvbnQtc2l6ZTogMTBweDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmFtb3VudC1pbnB1dC1yb3cgewogIG1pbi1oZWlnaHQ6IDM4cHg7Cn0KCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdICNhbW91bnQgewogIGZvbnQtc2l6ZTogMjVweDsKICBsaW5lLWhlaWdodDogMS4wNTsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gI2N1cnJlbmN5IHsKICBtaW4taGVpZ2h0OiAzNHB4OwogIGZvbnQtc2l6ZTogMTNweDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmNvbnZlcnRlZCB7CiAgbWFyZ2luOiAwOwogIGZvbnQtc2l6ZTogMTBweDsKICBsaW5lLWhlaWdodDogMS4yOwp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZm9ybS1saXN0IHsKICBwYWRkaW5nOiAwIDEzcHg7CiAgYm9yZGVyLXJhZGl1czogMThweDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmZvcm0tcm93IHsKICBtaW4taGVpZ2h0OiA0MnB4OwogIHBhZGRpbmc6IDNweCAwOwogIGdyaWQtdGVtcGxhdGUtY29sdW1uczogOTJweCBtaW5tYXgoMCwgMWZyKTsKICBnYXA6IDhweDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmZvcm0tcm93ID4gc3BhbiB7CiAgZm9udC1zaXplOiAxMHB4Owp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZm9ybS1yb3cgaW5wdXQsCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdIC5mb3JtLXJvdyBzZWxlY3QsCi5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdIC5mb3JtLXJvdyB0ZXh0YXJlYSB7CiAgbWluLWhlaWdodDogMzRweDsKICBwYWRkaW5nLXRvcDogNXB4OwogIHBhZGRpbmctYm90dG9tOiA1cHg7CiAgZm9udC1zaXplOiAxM3B4Owp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZm9ybS1yb3cgdGV4dGFyZWEgewogIG1pbi1oZWlnaHQ6IDUycHg7CiAgcmVzaXplOiB2ZXJ0aWNhbDsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmZpZWxkLW9wdGlvbmFsIHsKICBmb250LXNpemU6IDhweDsKfQoKLmV4cGVuc2UtbW9yZS1kZXRhaWxzIHsKICBib3JkZXItdG9wOiAxcHggc29saWQgdmFyKC0tYm9yZGVyKTsKfQoKLmV4cGVuc2UtbW9yZS1kZXRhaWxzID4gc3VtbWFyeSB7CiAgbWluLWhlaWdodDogNDFweDsKICBsaXN0LXN0eWxlOiBub25lOwogIGRpc3BsYXk6IGZsZXg7CiAgYWxpZ24taXRlbXM6IGNlbnRlcjsKICBqdXN0aWZ5LWNvbnRlbnQ6IHNwYWNlLWJldHdlZW47CiAgZ2FwOiAxMnB4OwogIGNvbG9yOiB2YXIoLS10ZXh0LXNvZnQpOwogIGN1cnNvcjogcG9pbnRlcjsKICBmb250LXNpemU6IDEwcHg7Cn0KCi5leHBlbnNlLW1vcmUtZGV0YWlscyA+IHN1bW1hcnk6Oi13ZWJraXQtZGV0YWlscy1tYXJrZXIgewogIGRpc3BsYXk6IG5vbmU7Cn0KCi5leHBlbnNlLW1vcmUtZGV0YWlscyA+IHN1bW1hcnk6OmFmdGVyIHsKICBjb250ZW50OiAi77yLIjsKICBjb2xvcjogdmFyKC0tcm9zZSk7CiAgZm9udC1zaXplOiAxNXB4Owp9CgouZXhwZW5zZS1tb3JlLWRldGFpbHNbb3Blbl0gPiBzdW1tYXJ5OjphZnRlciB7CiAgY29udGVudDogIuKIkiI7Cn0KCi5leHBlbnNlLW1vcmUtZGV0YWlscyA+IHN1bW1hcnkgc21hbGwgewogIG1hcmdpbi1sZWZ0OiBhdXRvOwogIGNvbG9yOiB2YXIoLS10ZXh0LXNvZnQpOwogIGZvbnQtc2l6ZTogOXB4OwogIGZvbnQtd2VpZ2h0OiA0MDA7Cn0KCi5leHBlbnNlLW1vcmUtZGV0YWlscy1ib2R5IC5tZXJjaGFudC1tZW1vcnktZmllbGQsCi5leHBlbnNlLW1vcmUtZGV0YWlscy1ib2R5IC5mb3JtLXJvdy1ub3RlcyB7CiAgbWFyZ2luOiAwOwp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZXhwZW5zZS1mb3JtLWFjdGlvbnMgewogIG1pbi1oZWlnaHQ6IDM0cHg7CiAgcGFkZGluZzogMDsKICBkaXNwbGF5OiBmbGV4OwogIGp1c3RpZnktY29udGVudDogZmxleC1lbmQ7CiAgYWxpZ24taXRlbXM6IGNlbnRlcjsKfQoKLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmV4cGVuc2UtZm9ybS1hY3Rpb25zID4gLnByaW1hcnktYnRuIHsKICBkaXNwbGF5OiBub25lOwp9Cgouc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAuZmF2b3JpdGUtc2F2ZS1idG4gewogIHdpZHRoOiBhdXRvOwogIG1pbi1oZWlnaHQ6IDMycHg7CiAgcGFkZGluZzogNnB4IDExcHg7CiAgYm9yZGVyLXJhZGl1czogMTFweDsKICBmb250LXNpemU6IDlweDsKfQoKQG1lZGlhIChtYXgtaGVpZ2h0OiA3NjBweCkgewogIC5zY3JlZW5bZGF0YS1zY3JlZW49ImFkZCJdIHsKICAgIHBhZGRpbmctdG9wOiA4cHg7CiAgfQoKICAuc2NyZWVuW2RhdGEtc2NyZWVuPSJhZGQiXSAucGFnZS1oZWFkaW5nLmNvbXBhY3QgewogICAgbWFyZ2luLWJvdHRvbTogNXB4OwogIH0KCiAgLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gI2V4cGVuc2VGb3JtIHsKICAgIGdhcDogNnB4OwogIH0KCiAgLnNjcmVlbltkYXRhLXNjcmVlbj0iYWRkIl0gLmZvcm0tcm93IHsKICAgIG1pbi1oZWlnaHQ6IDM5cHg7CiAgfQp9Cg==').decode()
           css_path.write_text(css)
 
       - name: Static safety checks
@@ -333,91 +105,8 @@ jobs:
 
       - name: Compact mobile Add Expense QA
         run: |
+          echo 'aW1wb3J0IHsgY2hyb21pdW0gfSBmcm9tICdwbGF5d3JpZ2h0JzsKaW1wb3J0IGFzc2VydCBmcm9tICdub2RlOmFzc2VydC9zdHJpY3QnOwoKY29uc3QgYnJvd3NlciA9IGF3YWl0IGNocm9taXVtLmxhdW5jaCh7aGVhZGxlc3M6dHJ1ZX0pOwpjb25zdCBjb250ZXh0ID0gYXdhaXQgYnJvd3Nlci5uZXdDb250ZXh0KHt2aWV3cG9ydDp7d2lkdGg6MzkwLGhlaWdodDo4NDR9LGlzTW9iaWxlOnRydWUsaGFzVG91Y2g6dHJ1ZX0pOwpjb25zdCBwYWdlID0gYXdhaXQgY29udGV4dC5uZXdQYWdlKCk7CmNvbnN0IGVycm9ycz1bXTsKcGFnZS5vbigncGFnZWVycm9yJyxlPT5lcnJvcnMucHVzaChTdHJpbmcoZSkpKTsKYXdhaXQgcGFnZS5nb3RvKCdodHRwOi8vMTI3LjAuMC4xOjQxNzMvaW5kZXguaHRtbCcse3dhaXRVbnRpbDonZG9tY29udGVudGxvYWRlZCd9KTsKYXdhaXQgcGFnZS53YWl0Rm9yVGltZW91dCg2MDApOwoKY29uc3QgdG91cj1wYWdlLmxvY2F0b3IoJyN3ZWxjb21lVG91cicpOwppZihhd2FpdCB0b3VyLmNvdW50KCkmJmF3YWl0IHRvdXIuaXNWaXNpYmxlKCkpewogIGZvcihsZXQgaT0wO2k8MTAmJmF3YWl0IHRvdXIuaXNWaXNpYmxlKCk7aSsrKXsKICAgIGNvbnN0IGJzPXRvdXIubG9jYXRvcignYnV0dG9uOnZpc2libGUnKTsKICAgIGNvbnN0IHByZWY9YnMuZmlsdGVyKHtoYXNUZXh0Oi9za2lwfG5leHR8ZG9uZXxmaW5pc2h8c3RhcnR8Z290IGl0fGNsb3NlL2l9KTsKICAgIGF3YWl0IChhd2FpdCBwcmVmLmNvdW50KCk/cHJlZi5sYXN0KCk6YnMubGFzdCgpKS5jbGljaygpOwogICAgYXdhaXQgcGFnZS53YWl0Rm9yVGltZW91dCg1MCk7CiAgfQp9Cgphd2FpdCBwYWdlLmV2YWx1YXRlKCgpPT5sb2NhbFN0b3JhZ2Uuc2V0SXRlbSgnbW9tb19leHBlbnNlX2xhc3RfY3VycmVuY3knLCdKUFknKSk7Cgphc3luYyBmdW5jdGlvbiB0YXBWaXNpYmxlTmF2KHRhcmdldCl7CiAgY29uc3QgYWxsPXBhZ2UubG9jYXRvcihgW2RhdGEtbmF2PSIke3RhcmdldH0iXWApOwogIGZvcihsZXQgaT0wO2k8YXdhaXQgYWxsLmNvdW50KCk7aSsrKXsKICAgIGNvbnN0IGI9YXdhaXQgYWxsLm50aChpKS5ib3VuZGluZ0JveCgpOwogICAgaWYoYiYmYi54PDM5MCYmYi54K2Iud2lkdGg+MCYmYi55PDg0NCYmYi55K2IuaGVpZ2h0PjApe2F3YWl0IGFsbC5udGgoaSkuY2xpY2soKTtyZXR1cm47fQogIH0KICB0aHJvdyBuZXcgRXJyb3IoYE5vIHZpc2libGUgJHt0YXJnZXR9IG5hdmlnYXRpb24gY29udHJvbGApOwp9Cgphd2FpdCB0YXBWaXNpYmxlTmF2KCdhZGQnKTsKYXdhaXQgcGFnZS53YWl0Rm9yVGltZW91dCgxMjApOwphc3NlcnQuZXF1YWwoYXdhaXQgcGFnZS5sb2NhdG9yKCcjY3VycmVuY3knKS5pbnB1dFZhbHVlKCksJ0pQWScpOwoKYXdhaXQgcGFnZS5zZWxlY3RPcHRpb24oJyNjdXJyZW5jeScsJ1VTRCcpOwphc3NlcnQuZXF1YWwoYXdhaXQgcGFnZS5ldmFsdWF0ZSgoKT0+bG9jYWxTdG9yYWdlLmdldEl0ZW0oJ21vbW9fZXhwZW5zZV9sYXN0X2N1cnJlbmN5JykpLCdVU0QnKTsKYXdhaXQgdGFwVmlzaWJsZU5hdignaG9tZScpOwphd2FpdCB0YXBWaXNpYmxlTmF2KCdhZGQnKTsKYXdhaXQgcGFnZS53YWl0Rm9yVGltZW91dCgxMDApOwphc3NlcnQuZXF1YWwoYXdhaXQgcGFnZS5sb2NhdG9yKCcjY3VycmVuY3knKS5pbnB1dFZhbHVlKCksJ1VTRCcpOwoKY29uc3QgbGF5b3V0PWF3YWl0IHBhZ2UuZXZhbHVhdGUoKCk9PnsKICBjb25zdCBhZGQ9ZG9jdW1lbnQucXVlcnlTZWxlY3RvcignW2RhdGEtc2NyZWVuPSJhZGQiXScpOwogIGNvbnN0IHBob3RvPWRvY3VtZW50LnF1ZXJ5U2VsZWN0b3IoJy5leHBlbnNlLXBob3RvLWNvbXBhY3QnKTsKICBjb25zdCBtb3JlPWRvY3VtZW50LnF1ZXJ5U2VsZWN0b3IoJy5leHBlbnNlLW1vcmUtZGV0YWlscycpOwogIGNvbnN0IHRvcFNhdmU9ZG9jdW1lbnQuZ2V0RWxlbWVudEJ5SWQoJ3NhdmVFeHBlbnNlVG9wJyk7CiAgY29uc3QgYm90dG9tU2F2ZT1kb2N1bWVudC5xdWVyeVNlbGVjdG9yKCdbZGF0YS1zY3JlZW49ImFkZCJdIC5leHBlbnNlLWZvcm0tYWN0aW9ucyA+IC5wcmltYXJ5LWJ0bicpOwogIHJldHVybiB7CiAgICBhZGRIZWlnaHQ6YWRkPy5zY3JvbGxIZWlnaHR8fDAsCiAgICBwaG90b0hlaWdodDpwaG90bz8uZ2V0Qm91bmRpbmdDbGllbnRSZWN0KCkuaGVpZ2h0fHwwLAogICAgcGhvdG9MYWJlbHM6ZG9jdW1lbnQucXVlcnlTZWxlY3RvckFsbCgnbGFiZWxbZm9yPSJleHBlbnNlUGhvdG8iXScpLmxlbmd0aCwKICAgIG9sZFBob3RvQWRkOmRvY3VtZW50LnF1ZXJ5U2VsZWN0b3JBbGwoJy5waG90by1hZGQnKS5sZW5ndGgsCiAgICBtb3JlT3BlbjpCb29sZWFuKG1vcmU/Lm9wZW4pLAogICAgbG9jYXRpb25JbnNpZGU6Qm9vbGVhbihtb3JlPy5xdWVyeVNlbGVjdG9yKCcjZXhwZW5zZUxvY2F0aW9uJykpLAogICAgbm90ZXNJbnNpZGU6Qm9vbGVhbihtb3JlPy5xdWVyeVNlbGVjdG9yKCcjZXhwZW5zZU5vdGVzJykpLAogICAgdG9wU2F2ZVZpc2libGU6Qm9vbGVhbih0b3BTYXZlJiZ0b3BTYXZlLmdldEJvdW5kaW5nQ2xpZW50UmVjdCgpLmhlaWdodD4wKSwKICAgIGJvdHRvbVNhdmVEaXNwbGF5OmJvdHRvbVNhdmU/Z2V0Q29tcHV0ZWRTdHlsZShib3R0b21TYXZlKS5kaXNwbGF5OidtaXNzaW5nJywKICAgIG92ZXJmbG93OmRvY3VtZW50LmRvY3VtZW50RWxlbWVudC5zY3JvbGxXaWR0aC1kb2N1bWVudC5kb2N1bWVudEVsZW1lbnQuY2xpZW50V2lkdGgKICB9Owp9KTsKCmFzc2VydC5lcXVhbChsYXlvdXQucGhvdG9MYWJlbHMsMSk7CmFzc2VydC5lcXVhbChsYXlvdXQub2xkUGhvdG9BZGQsMCk7CmFzc2VydC5vayhsYXlvdXQucGhvdG9IZWlnaHQ8PTQ0KTsKYXNzZXJ0LmVxdWFsKGxheW91dC5tb3JlT3BlbixmYWxzZSk7CmFzc2VydC5lcXVhbChsYXlvdXQubG9jYXRpb25JbnNpZGUsdHJ1ZSk7CmFzc2VydC5lcXVhbChsYXlvdXQubm90ZXNJbnNpZGUsdHJ1ZSk7CmFzc2VydC5lcXVhbChsYXlvdXQudG9wU2F2ZVZpc2libGUsdHJ1ZSk7CmFzc2VydC5lcXVhbChsYXlvdXQuYm90dG9tU2F2ZURpc3BsYXksJ25vbmUnKTsKYXNzZXJ0Lm9rKGxheW91dC5vdmVyZmxvdzw9MSk7CmFzc2VydC5vayhsYXlvdXQuYWRkSGVpZ2h0PD02ODAsYENvbXBhY3QgQWRkIHNjcmVlbiBpcyBzdGlsbCB0b28gdGFsbDogJHtsYXlvdXQuYWRkSGVpZ2h0fXB4YCk7Cgphd2FpdCBwYWdlLmxvY2F0b3IoJy5leHBlbnNlLW1vcmUtZGV0YWlscyA+IHN1bW1hcnknKS5jbGljaygpOwphc3NlcnQuZXF1YWwoYXdhaXQgcGFnZS5sb2NhdG9yKCcuZXhwZW5zZS1tb3JlLWRldGFpbHMnKS5nZXRBdHRyaWJ1dGUoJ29wZW4nKSwnJyk7CmFzc2VydC5vayhhd2FpdCBwYWdlLmxvY2F0b3IoJyNleHBlbnNlTG9jYXRpb24nKS5pc1Zpc2libGUoKSk7CmFzc2VydC5vayhhd2FpdCBwYWdlLmxvY2F0b3IoJyNleHBlbnNlTm90ZXMnKS5pc1Zpc2libGUoKSk7CmFzc2VydC5kZWVwRXF1YWwoZXJyb3JzLFtdKTsKCmNvbnNvbGUubG9nKGBQQVNTIGNvbXBhY3QgQWRkIEV4cGVuc2UgUUE6ICR7bGF5b3V0LmFkZEhlaWdodH1weCBjb3JlIHNjcmVlbiwgJHtsYXlvdXQucGhvdG9IZWlnaHR9cHggcGhvdG8gY29udHJvbGApOwphd2FpdCBicm93c2VyLmNsb3NlKCk7Cg==' | base64 -d > momo-add-expense-qa.mjs
           python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
-          cat > momo-add-expense-qa.mjs <<'EOF'
-          import { chromium } from 'playwright';
-          import assert from 'node:assert/strict';
-
-          const browser = await chromium.launch({headless:true});
-          const context = await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
-          const page = await context.newPage();
-          const errors=[];
-          page.on('pageerror',e=>errors.push(String(e)));
-          await page.goto('http://127.0.0.1:4173/index.html',{waitUntil:'domcontentloaded'});
-          await page.waitForTimeout(600);
-
-          const tour=page.locator('#welcomeTour');
-          if(await tour.count()&&await tour.isVisible()){
-            for(let i=0;i<10&&await tour.isVisible();i++){
-              const bs=tour.locator('button:visible');
-              const pref=bs.filter({hasText:/skip|next|done|finish|start|got it|close/i});
-              await (await pref.count()?pref.last():bs.last()).click();
-              await page.waitForTimeout(50);
-            }
-          }
-
-          await page.evaluate(()=>localStorage.setItem('momo_expense_last_currency','JPY'));
-
-          async function tapVisibleNav(target){
-            const all=page.locator(`[data-nav="${target}"]`);
-            for(let i=0;i<await all.count();i++){
-              const b=await all.nth(i).boundingBox();
-              if(b&&b.x<390&&b.x+b.width>0&&b.y<844&&b.y+b.height>0){await all.nth(i).click();return;}
-            }
-            throw new Error(`No visible ${target} navigation control`);
-          }
-
-          await tapVisibleNav('add');
-          await page.waitForTimeout(120);
-          assert.equal(await page.locator('#currency').inputValue(),'JPY');
-
-          await page.selectOption('#currency','USD');
-          assert.equal(await page.evaluate(()=>localStorage.getItem('momo_expense_last_currency')),'USD');
-          await tapVisibleNav('home');
-          await tapVisibleNav('add');
-          await page.waitForTimeout(100);
-          assert.equal(await page.locator('#currency').inputValue(),'USD');
-
-          const layout=await page.evaluate(()=>{
-            const add=document.querySelector('[data-screen="add"]');
-            const photo=document.querySelector('.expense-photo-compact');
-            const more=document.querySelector('.expense-more-details');
-            const topSave=document.getElementById('saveExpenseTop');
-            const bottomSave=document.querySelector('[data-screen="add"] .expense-form-actions > .primary-btn');
-            return {
-              addHeight:add?.scrollHeight||0,
-              photoHeight:photo?.getBoundingClientRect().height||0,
-              photoLabels:document.querySelectorAll('label[for="expensePhoto"]').length,
-              oldPhotoAdd:document.querySelectorAll('.photo-add').length,
-              moreOpen:Boolean(more?.open),
-              locationInside:Boolean(more?.querySelector('#expenseLocation')),
-              notesInside:Boolean(more?.querySelector('#expenseNotes')),
-              topSaveVisible:Boolean(topSave&&topSave.getBoundingClientRect().height>0),
-              bottomSaveDisplay:bottomSave?getComputedStyle(bottomSave).display:'missing',
-              overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
-            };
-          });
-
-          assert.equal(layout.photoLabels,1);
-          assert.equal(layout.oldPhotoAdd,0);
-          assert.ok(layout.photoHeight<=44);
-          assert.equal(layout.moreOpen,false);
-          assert.equal(layout.locationInside,true);
-          assert.equal(layout.notesInside,true);
-          assert.equal(layout.topSaveVisible,true);
-          assert.equal(layout.bottomSaveDisplay,'none');
-          assert.ok(layout.overflow<=1);
-          assert.ok(layout.addHeight<=680,`Compact Add screen is still too tall: ${layout.addHeight}px`);
-
-          await page.locator('.expense-more-details > summary').click();
-          assert.equal(await page.locator('.expense-more-details').getAttribute('open'),'');
-          assert.ok(await page.locator('#expenseLocation').isVisible());
-          assert.ok(await page.locator('#expenseNotes').isVisible());
-          assert.deepEqual(errors,[]);
-
-          console.log(`PASS compact Add Expense QA: ${layout.addHeight}px core screen, ${layout.photoHeight}px photo control`);
-          await browser.close();
-          EOF
           node momo-add-expense-qa.mjs
 
       - name: Clean QA artifacts and publish UX change
