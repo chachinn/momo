@@ -11,15 +11,6 @@
   const REFRESH_DEBOUNCE_MS = 450;
   const BASELINE_MONTHS = 3;
 
-  const RATES = {
-    PHP: 1,
-    JPY: 2.56,
-    USD: 0.0175,
-    GBP: 0.0132,
-    HKD: 0.136,
-    SGD: 0.0224,
-    CNY: 0.125
-  };
 
   let refreshTimer = 0;
   let lastSnapshotSignature = "";
@@ -39,8 +30,11 @@
   const normalize = (value) => text(value).toLowerCase().replace(/\s+/g, " ");
 
   const toPHP = (amount, currency = "PHP") => {
-    const rate = RATES[text(currency).toUpperCase()] || 1;
-    return num(amount) / rate;
+    const code = text(currency).toUpperCase() || "PHP";
+    if (typeof window.convertCurrency !== "function") {
+      throw new Error("Momo currency converter is unavailable.");
+    }
+    return num(window.convertCurrency(num(amount), code, "PHP"));
   };
 
   const parseDate = (value) => {
