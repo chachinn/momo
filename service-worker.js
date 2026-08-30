@@ -1,10 +1,10 @@
 // ========================================
 // MOMO SERVICE WORKER
-// Momo 1.10.3 — daily cloud auto backup + stable PWA updates
+// Momo 1.11.0 — daily cloud auto backup + stable PWA updates
 // ========================================
 
 const APP_VERSION =
-  "1.10.3";
+  "1.11.0";
 
 
 const CACHE_NAME =
@@ -16,7 +16,8 @@ const CORE_SHELL = [
   "./index.html",
   "./styles.css",
   "./app.js",
-  "./firebase-momo.js"
+  "./firebase-momo.js",
+  "./smart-money.js"
 ];
 
 
@@ -182,6 +183,9 @@ function isAppShellRequest(
     ) ||
     url.pathname.endsWith(
       "/firebase-momo.js"
+    ) ||
+    url.pathname.endsWith(
+      "/smart-money.js"
     ) ||
     url.pathname.endsWith(
       "/manifest.json"
