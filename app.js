@@ -196,6 +196,10 @@ let openingExpenseEditor =
   false;
 
 
+let pendingTripExpenseId =
+  "";
+
+
 let currentPhotoData =
   "";
 
@@ -4172,6 +4176,36 @@ function showScreen(
 
 
     prepareExpenseForm();
+
+
+    if (
+      pendingTripExpenseId &&
+      document.getElementById(
+        "expenseTrip"
+      )
+    ) {
+
+      const tripSelect =
+        document.getElementById(
+          "expenseTrip"
+        );
+
+      tripSelect.value =
+        String(
+          pendingTripExpenseId
+        );
+
+      tripSelect.dispatchEvent(
+        new Event(
+          "change",
+          { bubbles: true }
+        )
+      );
+
+      pendingTripExpenseId =
+        "";
+
+    }
 
     renderFavoriteQuickAdd();
 
@@ -10094,6 +10128,26 @@ function createTripCardHTML(
           <span aria-hidden="true">
             ›
           </span>
+        </button>
+
+
+        <button
+          class="trip-quick-expense-btn"
+          type="button"
+          data-trip-expense-id="${escapeHTML(
+            trip.id
+          )}"
+          aria-label="Add expense to ${escapeHTML(
+            trip.name ||
+            "this trip"
+          )}"
+        >
+          <span class="trip-quick-expense-icon" aria-hidden="true">＋</span>
+          <span class="trip-quick-expense-copy">
+            <strong>Add Expense</strong>
+            <small>Automatically add it to this trip</small>
+          </span>
+          <span class="trip-quick-expense-arrow" aria-hidden="true">›</span>
         </button>
 
 
@@ -41731,3 +41785,48 @@ async function initializeApp() {
 
 
 initializeApp();
+
+
+// ========================================
+// TRIP QUICK ADD EXPENSE
+// Uses the normal Add Expense form and only presets the trip.
+// ========================================
+
+document.addEventListener(
+  "click",
+  (event) => {
+
+    const button =
+      event.target.closest?.(
+        ".trip-quick-expense-btn"
+      );
+
+    if (!button) {
+      return;
+    }
+
+    const tripId =
+      String(
+        button.dataset.tripExpenseId ||
+        ""
+      );
+
+    if (!tripId) {
+      return;
+    }
+
+    pendingTripExpenseId =
+      tripId;
+
+    editingExpenseId =
+      "";
+
+    openingExpenseEditor =
+      false;
+
+    showScreen(
+      "add"
+    );
+
+  }
+);
