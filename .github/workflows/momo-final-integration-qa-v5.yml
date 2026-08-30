@@ -1,0 +1,97 @@
+name: Momo final integration QA v5
+
+on:
+  push:
+    branches:
+      - agent/momo-smart-money-v1-11
+    paths:
+      - .github/workflows/momo-final-integration-qa-v5.yml
+
+permissions:
+  contents: write
+
+jobs:
+  final-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/momo-smart-money-v1-11
+          fetch-depth: 0
+
+      - name: Static release gates
+        run: |
+          node --check app.js
+          node --check firebase-momo.js
+          node --check service-worker.js
+          node --check smart-money.js
+          node --check scripts/send-reminders.mjs
+          node --check momo-final-integration-qa.mjs
+          grep -q 'const DB_VERSION = 4;' app.js
+          grep -q 'window.convertCurrency' smart-money.js
+          ! grep -q 'const RATES' smart-money.js
+          grep -q 'protectedJarRemaining' smart-money.js
+          grep -q 'monthlyPlan' smart-money.js
+          grep -q 'contributions' smart-money.js
+          grep -q 'interestAPR' smart-money.js
+          grep -q 'regularPayment' smart-money.js
+          grep -q 'minimumDue' smart-money.js
+          ! grep -q 'new MutationObserver' smart-money.js
+          grep -q 'momo-notifications' firebase-momo.js
+          grep -q 'CLOUD_AUTO_BACKUP_HOUR = 8' firebase-momo.js
+          grep -q 'smart-money.js' index.html
+          grep -q 'smart-money.js' service-worker.js
+          grep -q 'momo_expense_last_currency' app.js
+          grep -q 'expense-photo-compact' index.html
+          grep -q 'expense-more-details' index.html
+          test "$(grep -o 'for="expensePhoto"' index.html | wc -l)" -eq 1
+          git diff --check origin/main...HEAD
+
+      - name: Check duplicate HTML IDs
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          from collections import Counter
+          text = Path('index.html').read_text()
+          ids = re.findall(r'\bid="([^"]+)"', text)
+          dupes = [key for key, count in Counter(ids).items() if count > 1]
+          if dupes:
+              raise SystemExit(f'Duplicate HTML IDs: {dupes}')
+
+      - name: Browser setup
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+
+      - name: Populated mobile integration QA
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          node momo-final-integration-qa.mjs
+
+      - name: Clean QA artifacts and self-remove
+        run: |
+          rm -rf node_modules
+          rm -f package.json package-lock.json momo-final-integration-qa.mjs
+          rm -f .github/workflows/momo-final-integration-qa.yml
+          rm -f .github/workflows/momo-final-integration-qa-v2.yml
+          rm -f .github/workflows/momo-final-integration-qa-v3.yml
+          rm -f .github/workflows/momo-final-integration-qa-v4.yml
+          rm -f .github/workflows/momo-final-integration-qa-v5.yml
+          test ! -e node_modules
+          test ! -e package.json
+          test ! -e package-lock.json
+          test ! -e momo-final-integration-qa.mjs
+          test ! -e .github/workflows/momo-final-integration-qa.yml
+          test ! -e .github/workflows/momo-final-integration-qa-v2.yml
+          test ! -e .github/workflows/momo-final-integration-qa-v3.yml
+          test ! -e .github/workflows/momo-final-integration-qa-v4.yml
+          test ! -e .github/workflows/momo-final-integration-qa-v5.yml
+          git config user.name "Momo Release Bot"
+          git config user.email "momo-release-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m "Verify Momo Smart Money and compact Add Expense"
+          git push origin HEAD:agent/momo-smart-money-v1-11
