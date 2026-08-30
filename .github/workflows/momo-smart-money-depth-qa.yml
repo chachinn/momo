@@ -127,10 +127,18 @@ jobs:
 
       - name: Publish fix and self clean
         run: |
-          rm -f momo-depth-qa.mjs package.json package-lock.json .github/workflows/momo-smart-money-depth-qa.yml
+          rm -rf node_modules
+          rm -f momo-depth-qa.mjs package.json package-lock.json .momo-smart-qa-trigger .github/workflows/momo-smart-money-depth-qa.yml
+          test ! -e node_modules
+          test ! -e momo-depth-qa.mjs
+          test ! -e package.json
+          test ! -e package-lock.json
+          test ! -e .momo-smart-qa-trigger
+          test ! -e .github/workflows/momo-smart-money-depth-qa.yml
           git config user.name "Momo Release Bot"
           git config user.email "momo-release-bot@users.noreply.github.com"
           git add -A
           git diff --cached --check
+          git status --short
           git commit -m "Align Momo Smart Money with real finance data"
           git push origin HEAD:agent/momo-smart-money-v1-11
