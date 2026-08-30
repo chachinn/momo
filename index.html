@@ -1038,21 +1038,15 @@
         <form id="expenseForm">
           <input id="expenseId" type="hidden">
 
-          <section class="photo-upload">
+          <section class="photo-upload expense-photo-upload">
             <label
-              class="photo-preview"
+              class="expense-photo-compact"
               id="photoPreview"
               for="expensePhoto"
+              aria-label="Add or change expense photo"
             >
-              📸
-            </label>
-
-            <label
-              class="photo-add"
-              for="expensePhoto"
-            >
-              <span>＋</span>
-              Add Photo
+              <span class="expense-photo-icon" aria-hidden="true">📸</span>
+              <span class="expense-photo-label">Add photo</span>
             </label>
 
             <input
@@ -1286,36 +1280,44 @@
               >
             </label>
 
-            <div class="merchant-memory-field">
-              <label class="form-row">
-                <span>
-                  Location / Store
-                  <small class="field-optional">Optional</small>
-                </span>
+            <details class="expense-more-details">
+              <summary>
+                <span>More details</span>
+                <small>Location &amp; notes</small>
+              </summary>
+              <div class="expense-more-details-body">
+                <div class="merchant-memory-field">
+                  <label class="form-row">
+                    <span>
+                      Location / Store
+                      <small class="field-optional">Optional</small>
+                    </span>
 
-                <input
-                  id="expenseLocation"
-                  type="text"
-                  placeholder="Start typing a place..."
-                  autocomplete="off"
-                >
-              </label>
+                    <input
+                      id="expenseLocation"
+                      type="text"
+                      placeholder="Start typing a place..."
+                      autocomplete="off"
+                    >
+                  </label>
 
-              <div
-                id="merchantMemorySuggestions"
-                class="merchant-memory-suggestions"
-                hidden
-              ></div>
-            </div>
+                  <div
+                    id="merchantMemorySuggestions"
+                    class="merchant-memory-suggestions"
+                    hidden
+                  ></div>
+                </div>
 
-            <label class="form-row form-row-notes">
-              <span>Notes</span>
-              <textarea
-                id="expenseNotes"
-                rows="3"
-                placeholder="Optional notes"
-              ></textarea>
-            </label>
+                <label class="form-row form-row-notes">
+                  <span>Notes</span>
+                  <textarea
+                    id="expenseNotes"
+                    rows="3"
+                    placeholder="Optional notes"
+                  ></textarea>
+                </label>
+              </div>
+            </details>
           </section>
 
           <div class="expense-form-actions">

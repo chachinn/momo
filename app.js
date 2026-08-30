@@ -276,6 +276,9 @@ const LOCAL_KEYS = {
   converterB:
     "momo_converter_currency_b",
 
+  expenseCurrency:
+    "momo_expense_last_currency",
+
   appearanceTheme:
     "momo_appearance_theme",
 
@@ -5300,7 +5303,25 @@ amountInput?.addEventListener(
 
 currencySelect?.addEventListener(
   "change",
-  updateExpenseConversion
+  () => {
+
+    if (
+      currencySelect.value &&
+      EXCHANGE_RATES[
+        currencySelect.value
+      ]
+    ) {
+
+      localStorage.setItem(
+        LOCAL_KEYS.expenseCurrency,
+        currencySelect.value
+      );
+
+    }
+
+    updateExpenseConversion();
+
+  }
 );
 
 
@@ -14010,7 +14031,7 @@ function renderExpensePhotoPreview(
 
         `
 
-      : "📸";
+      : `<span class="expense-photo-icon" aria-hidden="true">📸</span><span class="expense-photo-label">Add photo</span>`;
 
 }
 
@@ -14590,8 +14611,18 @@ function resetExpenseForm() {
     currencySelect
   ) {
 
+    const lastExpenseCurrency =
+      localStorage.getItem(
+        LOCAL_KEYS.expenseCurrency
+      );
+
     currencySelect.value =
-      "PHP";
+      lastExpenseCurrency &&
+      EXCHANGE_RATES[
+        lastExpenseCurrency
+      ]
+        ? lastExpenseCurrency
+        : "PHP";
 
   }
 

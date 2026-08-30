@@ -16952,3 +16952,214 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 .momo-advanced-section{margin:12px 0 15px;padding:13px;border:1px solid var(--border);border-radius:19px;background:rgba(255,255,255,.7)}.momo-advanced-section .momo-tool-heading{margin-bottom:8px}
 #activityList,#receiptGalleryGrid,#recurringList,#payablesList,#plannedExpenseList,#savingsGoalList,.momo-global-results{content-visibility:auto;contain-intrinsic-size:600px}
 @media(max-width:365px){.momo-payoff-controls,.momo-payoff-result{grid-template-columns:1fr}.momo-sub-manager-row,.momo-jar-planner-row{align-items:flex-start;flex-direction:column}.momo-sub-manager-row>div:last-child{width:100%}}
+
+/* MOMO COMPACT ADD EXPENSE */
+.screen[data-screen="add"] {
+  padding: 12px 14px 16px;
+}
+
+.screen[data-screen="add"] .page-heading.compact {
+  margin-bottom: 8px;
+}
+
+.screen[data-screen="add"] .page-heading h1 {
+  font-size: clamp(28px, 7vw, 32px);
+}
+
+.screen[data-screen="add"] #expenseForm {
+  display: grid;
+  gap: 8px;
+}
+
+.screen[data-screen="add"] #expenseForm > .card,
+.screen[data-screen="add"] #expenseForm > .photo-upload,
+.screen[data-screen="add"] #expenseForm > .expense-form-actions {
+  margin-bottom: 0;
+}
+
+.screen[data-screen="add"] .expense-photo-upload {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0;
+}
+
+.expense-photo-compact {
+  width: auto;
+  min-width: 108px;
+  max-width: 148px;
+  height: 38px;
+  padding: 3px 10px;
+  border: 1px dashed rgba(222, 143, 155, 0.58);
+  border-radius: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--rose);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.expense-photo-compact .expense-photo-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.expense-photo-compact .expense-photo-label {
+  white-space: nowrap;
+}
+
+.expense-photo-compact img {
+  width: 32px;
+  height: 32px;
+  display: block;
+  border-radius: 9px;
+  object-fit: cover;
+}
+
+.screen[data-screen="add"] .form-card {
+  padding: 9px 13px;
+  border-radius: 18px;
+}
+
+.screen[data-screen="add"] .form-card .label {
+  margin-bottom: 1px;
+  font-size: 10px;
+}
+
+.screen[data-screen="add"] .amount-input-row {
+  min-height: 38px;
+}
+
+.screen[data-screen="add"] #amount {
+  font-size: 25px;
+  line-height: 1.05;
+}
+
+.screen[data-screen="add"] #currency {
+  min-height: 34px;
+  font-size: 13px;
+}
+
+.screen[data-screen="add"] .converted {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.screen[data-screen="add"] .form-list {
+  padding: 0 13px;
+  border-radius: 18px;
+}
+
+.screen[data-screen="add"] .form-row {
+  min-height: 42px;
+  padding: 3px 0;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.screen[data-screen="add"] .form-row > span {
+  font-size: 10px;
+}
+
+.screen[data-screen="add"] .form-row input,
+.screen[data-screen="add"] .form-row select,
+.screen[data-screen="add"] .form-row textarea {
+  min-height: 34px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  font-size: 13px;
+}
+
+.screen[data-screen="add"] .form-row textarea {
+  min-height: 52px;
+  resize: vertical;
+}
+
+.screen[data-screen="add"] .field-optional {
+  font-size: 8px;
+}
+
+.expense-more-details {
+  border-top: 1px solid var(--border);
+}
+
+.expense-more-details > summary {
+  min-height: 41px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-soft);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.expense-more-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.expense-more-details > summary::after {
+  content: "＋";
+  color: var(--rose);
+  font-size: 15px;
+}
+
+.expense-more-details[open] > summary::after {
+  content: "−";
+}
+
+.expense-more-details > summary small {
+  margin-left: auto;
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.expense-more-details-body .merchant-memory-field,
+.expense-more-details-body .form-row-notes {
+  margin: 0;
+}
+
+.screen[data-screen="add"] .expense-form-actions {
+  min-height: 34px;
+  padding: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.screen[data-screen="add"] .expense-form-actions > .primary-btn {
+  display: none;
+}
+
+.screen[data-screen="add"] .favorite-save-btn {
+  width: auto;
+  min-height: 32px;
+  padding: 6px 11px;
+  border-radius: 11px;
+  font-size: 9px;
+}
+
+@media (max-height: 760px) {
+  .screen[data-screen="add"] {
+    padding-top: 8px;
+  }
+
+  .screen[data-screen="add"] .page-heading.compact {
+    margin-bottom: 5px;
+  }
+
+  .screen[data-screen="add"] #expenseForm {
+    gap: 6px;
+  }
+
+  .screen[data-screen="add"] .form-row {
+    min-height: 39px;
+  }
+}
