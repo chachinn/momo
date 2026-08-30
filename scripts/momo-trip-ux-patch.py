@@ -29,6 +29,8 @@ insert_at = html_without.find(trip_list_marker)
 if insert_at < 0:
     raise SystemExit('tripList marker not found')
 html = html_without[:insert_at] + converter_block.strip() + '\n\n        ' + html_without[insert_at:]
+# Moving an indented block can leave an indentation-only blank line behind.
+html = re.sub(r'[ \t]+\n', '\n', html)
 index_path.write_text(html)
 
 # Add a pending trip target used only when opening the standard Add Expense flow from Trips.
