@@ -1,0 +1,58 @@
+name: Momo live trip UX smoke
+
+on:
+  push:
+    branches:
+      - ux/trip-quick-expense
+
+permissions:
+  contents: write
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ux/trip-quick-expense
+          fetch-depth: 0
+
+      - name: Verify deployed Trips UX
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git show origin/main:index.html > /tmp/main-index.html
+          git show origin/main:app.js > /tmp/main-app.js
+          git show origin/main:styles.css > /tmp/main-styles.css
+          git show origin/main:service-worker.js > /tmp/main-sw.js
+          BASE="https://chachinn.github.io/momo"
+          Q="?smoke=${GITHUB_RUN_ID}"
+          curl --fail --silent --show-error --location --retry 3 "$BASE/index.html$Q" -o /tmp/live-index.html
+          curl --fail --silent --show-error --location --retry 3 "$BASE/app.js$Q" -o /tmp/live-app.js
+          curl --fail --silent --show-error --location --retry 3 "$BASE/styles.css$Q" -o /tmp/live-styles.css
+          curl --fail --silent --show-error --location --retry 3 "$BASE/service-worker.js$Q" -o /tmp/live-sw.js
+          cmp /tmp/main-index.html /tmp/live-index.html
+          cmp /tmp/main-app.js /tmp/live-app.js
+          cmp /tmp/main-styles.css /tmp/live-styles.css
+          cmp /tmp/main-sw.js /tmp/live-sw.js
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path('/tmp/live-index.html').read_text()
+          assert html.index('id="inlineConverter"') < html.index('id="tripList"')
+          assert html.count('id="inlineConverter"') == 1
+          PY
+          grep -q 'trip-quick-expense-btn' /tmp/live-app.js
+          grep -q 'pendingTripExpenseId' /tmp/live-app.js
+          grep -q 'MOMO TRIP QUICK EXPENSE' /tmp/live-styles.css
+          grep -Fq 'momo-runtime-shell-v${APP_VERSION}-trip-ux-r1' /tmp/live-sw.js
+          echo "PASS live trip UX"
+
+      - name: Self-clean smoke workflow
+        run: |
+          rm -f .github/workflows/momo-trip-live-smoke.yml
+          git config user.name "Momo Release Bot"
+          git config user.email "momo-release-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Remove temporary live trip UX smoke test"
+          git push origin HEAD:ux/trip-quick-expense
