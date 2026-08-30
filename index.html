@@ -1377,7 +1377,7 @@
 
         <section
           id="inlineConverter"
-          class="card inline-converter"
+          class="card inline-converter travel-quick-converter"
         >
           <div class="converter-heading">
             <div>
@@ -1385,9 +1385,14 @@
               <h2>Currency Converter</h2>
             </div>
 
-            <span class="converter-live-label">
-              Two-way
-            </span>
+            <button
+              id="toggleTravelConverter"
+              class="converter-live-label converter-expand-btn"
+              type="button"
+              aria-expanded="false"
+            >
+              Full
+            </button>
           </div>
 
           <p class="converter-help">
@@ -1395,7 +1400,7 @@
             <strong>1990 + 3450 + 1280</strong>.
           </p>
 
-          <div class="calculator-currency-block">
+          <div class="calculator-currency-block converter-side-a">
             <div class="calculator-currency-top">
               <select
                 id="converterCurrencyA"
@@ -1481,7 +1486,7 @@
             <span></span>
           </div>
 
-          <div class="calculator-currency-block">
+          <div class="calculator-currency-block converter-side-b">
             <div class="calculator-currency-top">
               <select
                 id="converterCurrencyB"
