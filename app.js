@@ -10115,23 +10115,6 @@ function createTripCardHTML(
       <div class="trip-entry-body">
 
         <button
-          class="trip-dashboard-open"
-          type="button"
-          data-trip-id="${escapeHTML(
-            trip.id
-          )}"
-        >
-          <span>
-            View Trip Dashboard
-          </span>
-
-          <span aria-hidden="true">
-            ›
-          </span>
-        </button>
-
-
-        <button
           class="trip-quick-expense-btn"
           type="button"
           data-trip-expense-id="${escapeHTML(
@@ -10148,6 +10131,23 @@ function createTripCardHTML(
             <small>Automatically add it to this trip</small>
           </span>
           <span class="trip-quick-expense-arrow" aria-hidden="true">›</span>
+        </button>
+
+
+        <button
+          class="trip-dashboard-open"
+          type="button"
+          data-trip-id="${escapeHTML(
+            trip.id
+          )}"
+        >
+          <span>
+            View Trip Dashboard
+          </span>
+
+          <span aria-hidden="true">
+            ›
+          </span>
         </button>
 
 
@@ -41830,3 +41830,84 @@ document.addEventListener(
 
   }
 );
+
+
+
+// ========================================
+// COMPACT TRAVEL CONVERTER
+// Trips defaults to a quick two-way converter; full calculator stays one tap away.
+// ========================================
+
+const travelInlineConverter =
+  document.getElementById(
+    "inlineConverter"
+  );
+
+const toggleTravelConverter =
+  document.getElementById(
+    "toggleTravelConverter"
+  );
+
+function setTravelConverterExpanded(
+  expanded
+) {
+
+  if (!travelInlineConverter) {
+    return;
+  }
+
+  const next =
+    Boolean(
+      expanded
+    );
+
+  travelInlineConverter.classList.toggle(
+    "is-expanded",
+    next
+  );
+
+  if (toggleTravelConverter) {
+    toggleTravelConverter.setAttribute(
+      "aria-expanded",
+      String(next)
+    );
+
+    toggleTravelConverter.textContent =
+      next
+        ? "Compact"
+        : "Full";
+  }
+}
+
+toggleTravelConverter?.addEventListener(
+  "click",
+  () => {
+    setTravelConverterExpanded(
+      !travelInlineConverter?.classList.contains(
+        "is-expanded"
+      )
+    );
+  }
+);
+
+// The dedicated Converter shortcut should still open the full calculator.
+document
+  .querySelectorAll(
+    "[data-focus-converter]"
+  )
+  .forEach(
+    (button) => {
+      button.addEventListener(
+        "click",
+        () => {
+          setTimeout(
+            () =>
+              setTravelConverterExpanded(
+                true
+              ),
+            0
+          );
+        }
+      );
+    }
+  );
