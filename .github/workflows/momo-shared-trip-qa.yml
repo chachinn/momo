@@ -14,7 +14,19 @@ jobs:
           fetch-depth: 0
 
       - name: Apply shared trip integration
-        run: python3 scripts/momo-shared-trip-patch.py
+        run: |
+          python3 scripts/momo-shared-trip-patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('trip-sharing.js')
+          text = path.read_text()
+          old = '<div id="tripShareModal" class="modal trip-share-modal" hidden>'
+          new = '<div id="tripShareModal" class="modal-backdrop trip-share-modal" hidden>'
+          if old not in text and new not in text:
+              raise SystemExit('Shared trip modal wrapper anchor not found')
+          text = text.replace(old, new, 1)
+          path.write_text(text)
+          PY
 
       - name: Make browser QA follow real contextual tips
         run: |
@@ -57,6 +69,7 @@ jobs:
           grep -q 'src="trip-sharing.js"' index.html
           grep -q '"./trip-sharing.js"' service-worker.js
           grep -Fq 'momo-runtime-shell-v${APP_VERSION}-shared-trip-r1' service-worker.js
+          grep -q 'class="modal-backdrop trip-share-modal"' trip-sharing.js
           ! grep -q 'MutationObserver' trip-sharing.js
           python3 - <<'PY'
           from pathlib import Path
