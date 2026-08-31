@@ -32,46 +32,13 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
-
           path = Path('scripts/momo-shared-trip-qa.mjs')
           text = path.read_text()
-
-          start = text.index('async function dismissContextTip(page) {')
-          end = text.index('\nasync function createContext(browser) {', start)
-          helper = r'''async function dismissContextTip(page) {
-  for (let i = 0; i < 8; i += 1) {
-    const gotIt = page.locator('#contextTipGotIt');
-    if (await gotIt.isVisible().catch(() => false)) {
-      await gotIt.click().catch(() => {});
-      await page.waitForTimeout(100);
-      continue;
-    }
-    await page.waitForTimeout(80);
-  }
-}
-
-async function clickThroughContextTips(page, locator) {
-  let lastError = null;
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    await dismissContextTip(page);
-    try {
-      await locator.click({ timeout: 2500 });
-      await page.waitForTimeout(120);
-      await dismissContextTip(page);
-      return;
-    } catch (error) {
-      lastError = error;
-      const tipVisible = await page.locator('#contextTipModal').isVisible().catch(() => false);
-      if (!tipVisible) throw error;
-      await dismissContextTip(page);
-    }
-  }
-  throw lastError || new Error('Could not complete tap after contextual tips');
-}
-'''
-          text = text[:start] + helper + text[end:]
-
+          old = '''async function dismissContextTip(page) {\n  for (let i = 0; i < 5; i += 1) {\n    const gotIt = page.getByRole('button', { name: /got it/i });\n    if (await gotIt.count()) {\n      const visible = gotIt.filter({ visible: true });\n      if (await visible.count()) {\n        await visible.first().click().catch(() => {});\n        await page.waitForTimeout(80);\n        continue;\n      }\n    }\n    break;\n  }\n}\n'''
+          new = '''async function dismissContextTip(page) {\n  for (let i = 0; i < 8; i += 1) {\n    const gotIt = page.locator('#contextTipGotIt');\n    if (await gotIt.isVisible().catch(() => false)) {\n      await gotIt.click().catch(() => {});\n      await page.waitForTimeout(100);\n      continue;\n    }\n    await page.waitForTimeout(80);\n  }\n}\n\nasync function clickThroughContextTips(page, locator) {\n  let lastError = null;\n  for (let attempt = 0; attempt < 6; attempt += 1) {\n    await dismissContextTip(page);\n    try {\n      await locator.click({ timeout: 2500 });\n      await page.waitForTimeout(120);\n      await dismissContextTip(page);\n      return;\n    } catch (error) {\n      lastError = error;\n      const tipVisible = await page.locator('#contextTipModal').isVisible().catch(() => false);\n      if (!tipVisible) throw error;\n      await dismissContextTip(page);\n    }\n  }\n  throw lastError || new Error('Could not complete tap after contextual tips');\n}\n'''
+          if old not in text:
+              raise SystemExit('dismissContextTip QA anchor not found')
+          text = text.replace(old, new, 1)
           replacements = {
             '  await shareButton.click();': '  await clickThroughContextTips(page, shareButton);',
             "  await page.getByRole('button', { name: /create private invite/i }).click();": "  await clickThroughContextTips(page, page.getByRole('button', { name: /create private invite/i }));",
@@ -81,12 +48,10 @@ async function clickThroughContextTips(page, locator) {
             '  await page.locator(`[data-trip-expense-id="${partnerTripId}"]`).click();': '  await clickThroughContextTips(page, page.locator(`[data-trip-expense-id="${partnerTripId}"]`));',
             '  await page.locator(`[data-trip-id="${partnerTripId}"].edit-trip`).click();': '  await clickThroughContextTips(page, page.locator(`[data-trip-id="${partnerTripId}"].edit-trip`));'
           }
-
           for before, after in replacements.items():
               if before not in text:
                   raise SystemExit(f'QA click anchor not found: {before}')
               text = text.replace(before, after, 1)
-
           path.write_text(text)
           PY
           node --check scripts/momo-shared-trip-qa.mjs
