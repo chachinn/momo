@@ -16,6 +16,31 @@ jobs:
       - name: Apply shared trip integration
         run: python3 scripts/momo-shared-trip-patch.py
 
+      - name: Make browser QA follow real contextual tips
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('scripts/momo-shared-trip-qa.mjs')
+          text = path.read_text()
+          old = '''async function dismissContextTip(page) {\n  for (let i = 0; i < 5; i += 1) {\n    const gotIt = page.getByRole('button', { name: /got it/i });\n    if (await gotIt.count()) {\n      const visible = gotIt.filter({ visible: true });\n      if (await visible.count()) {\n        await visible.first().click().catch(() => {});\n        await page.waitForTimeout(80);\n        continue;\n      }\n    }\n    break;\n  }\n}\n'''
+          new = '''async function dismissContextTip(page) {\n  for (let i = 0; i < 5; i += 1) {\n    const gotIt = page.locator('#contextTipGotIt');\n    if (await gotIt.isVisible().catch(() => false)) {\n      await gotIt.click();\n      await page.waitForTimeout(80);\n      continue;\n    }\n    await page.waitForTimeout(60);\n  }\n}\n'''
+          if old not in text:
+              raise SystemExit('dismissContextTip QA anchor not found')
+          text = text.replace(old, new, 1)
+          replacements = {
+            "  await shareButton.click();\n  await page.getByRole('button', { name: /create private invite/i }).click();": "  await shareButton.click();\n  await page.waitForTimeout(250);\n  await dismissContextTip(page);\n  await page.getByRole('button', { name: /create private invite/i }).click();",
+            "  await page.locator('[data-trip-expense-id=\"trip-qa-japan\"]').click();\n  await page.waitForFunction": "  await page.locator('[data-trip-expense-id=\"trip-qa-japan\"]').click();\n  await page.waitForTimeout(250);\n  await dismissContextTip(page);\n  await page.waitForFunction",
+            "  await joinButton.click();\n  await page.locator('#tripShareJoinCode').fill": "  await joinButton.click();\n  await page.waitForTimeout(250);\n  await dismissContextTip(page);\n  await page.locator('#tripShareJoinCode').fill",
+            "  await page.locator(`[data-trip-expense-id=\"${partnerTripId}\"]`).click();\n  await page.waitForFunction": "  await page.locator(`[data-trip-expense-id=\"${partnerTripId}\"]`).click();\n  await page.waitForTimeout(250);\n  await dismissContextTip(page);\n  await page.waitForFunction"
+          }
+          for before, after in replacements.items():
+              if before not in text:
+                  raise SystemExit(f'QA click anchor not found: {before[:70]}')
+              text = text.replace(before, after, 1)
+          path.write_text(text)
+          PY
+          node --check scripts/momo-shared-trip-qa.mjs
+
       - name: Static safety checks
         run: |
           node --check app.js
