@@ -8,7 +8,7 @@ const APP_VERSION =
 
 
 const CACHE_NAME =
-  `momo-runtime-shell-v${APP_VERSION}-shared-trip-r1`;
+  `momo-runtime-shell-v${APP_VERSION}-shared-trip-r2`;
 
 
 const CORE_SHELL = [

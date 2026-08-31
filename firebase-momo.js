@@ -1194,7 +1194,7 @@ async function acceptTripShareInvite(rawCode) {
   const user = requireTripShareUser();
   const parsed = parseTripShareCode(rawCode);
   if (parsed.ownerUid === user.uid) {
-    throw new Error("Open this trip invite on Martin’s Momo account, not the account that created it.");
+    throw new Error("Open this trip invite on your travel partner’s Momo account, not the account that created it.");
   }
 
   const ref = tripInviteRef(parsed.ownerUid, parsed.token);
