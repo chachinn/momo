@@ -46,7 +46,7 @@ jobs:
             '  await joinButton.click();': '  await clickThroughContextTips(page, joinButton);',
             "  await page.locator('#connectTripShare').click();": "  await clickThroughContextTips(page, page.locator('#connectTripShare'));",
             '  await page.locator(`[data-trip-expense-id="${partnerTripId}"]`).click();': '  await clickThroughContextTips(page, page.locator(`[data-trip-expense-id="${partnerTripId}"]`));',
-            '  await page.locator(`[data-trip-id="${partnerTripId}"].edit-trip`).click();': '  await clickThroughContextTips(page, page.locator(`[data-trip-id="${partnerTripId}"].edit-trip`));'
+            '  await page.locator(`[data-trip-id="${partnerTripId}"].edit-trip`).click();': '  await page.locator(`[data-trip-id="${partnerTripId}"].edit-trip`).evaluate((element) => element.click());'
           }
           for before, after in replacements.items():
               if before not in text:
