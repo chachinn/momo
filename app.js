@@ -10043,6 +10043,8 @@ function createTripCardHTML(
 
           <div class="trip-entry-actions">
 
+            ${window.MomoTripSharing?.tripShareIconHTML?.(trip) || ""}
+
             <button
               class="trip-banner-btn edit-trip"
               type="button"
@@ -11672,7 +11674,7 @@ tripForm?.addEventListener(
       );
 
 
-    const trip = {
+    let trip = {
 
       id:
         existingId ||
@@ -11717,10 +11719,39 @@ tripForm?.addEventListener(
     };
 
 
+    trip =
+      window.MomoTripSharing
+        ?.decorateTripBeforeSave
+        ?.(
+          trip,
+          previous
+        ) ||
+      trip;
+
+
     await putRecord(
       STORES.trips,
       trip
     );
+
+
+    const sharedTripMetaSync =
+      window.MomoTripSharing
+        ?.onTripSaved
+        ?.(
+          trip
+        );
+
+
+    sharedTripMetaSync
+      ?.catch
+      ?.(
+        (error) =>
+          console.warn(
+            "Shared trip metadata will retry later:",
+            error
+          )
+      );
 
 
     await loadAppData();
@@ -15832,7 +15863,7 @@ expenseForm?.addEventListener(
     }
 
 
-    const expense = {
+    let expense = {
 
       id:
         existingId ||
@@ -15945,10 +15976,40 @@ expenseForm?.addEventListener(
     };
 
 
+    expense =
+      window.MomoTripSharing
+        ?.decorateExpenseBeforeSave
+        ?.(
+          expense,
+          previous
+        ) ||
+      expense;
+
+
     await putRecord(
       STORES.expenses,
       expense
     );
+
+
+    const sharedExpenseSync =
+      window.MomoTripSharing
+        ?.onExpenseSaved
+        ?.(
+          expense,
+          previous
+        );
+
+
+    sharedExpenseSync
+      ?.catch
+      ?.(
+        (error) =>
+          console.warn(
+            "Shared trip expense will retry later:",
+            error
+          )
+      );
 
 
     if (
@@ -20026,10 +20087,38 @@ document
       }
 
 
+      const deletedExpense =
+        expenses.find(
+          (item) =>
+            item.id ===
+            expensePendingDelete
+        ) ||
+        null;
+
+
       await deleteRecord(
         STORES.expenses,
         expensePendingDelete
       );
+
+
+      const sharedExpenseDeleteSync =
+        window.MomoTripSharing
+          ?.onExpenseDeleted
+          ?.(
+            deletedExpense
+          );
+
+
+      sharedExpenseDeleteSync
+        ?.catch
+        ?.(
+          (error) =>
+            console.warn(
+              "Shared trip expense deletion will retry later:",
+              error
+            )
+        );
 
 
       expensePendingDelete =
@@ -41911,3 +42000,94 @@ document
       );
     }
   );
+
+
+
+// ========================================
+// MOMO SHARED TRIP LOCAL ADAPTER
+// Keeps collaboration outside the core finance database architecture.
+// ========================================
+
+window.MomoLocalTripShare = {
+  getTrips: () =>
+    trips.map(
+      (item) => ({
+        ...item
+      })
+    ),
+
+  getExpenses: () =>
+    expenses.map(
+      (item) => ({
+        ...item
+      })
+    ),
+
+  async upsertTrip(
+    record,
+    {
+      refresh = true
+    } = {}
+  ) {
+    await putRecord(
+      STORES.trips,
+      record
+    );
+
+    if (refresh) {
+      await loadAppData();
+      renderAll();
+    }
+  },
+
+  async upsertExpense(
+    record,
+    {
+      refresh = true
+    } = {}
+  ) {
+    await putRecord(
+      STORES.expenses,
+      record
+    );
+
+    if (refresh) {
+      await loadAppData();
+      renderAll();
+    }
+  },
+
+  async deleteExpense(
+    id,
+    {
+      refresh = true
+    } = {}
+  ) {
+    await deleteRecord(
+      STORES.expenses,
+      id
+    );
+
+    if (refresh) {
+      await loadAppData();
+      renderAll();
+    }
+  },
+
+  async refresh() {
+    await loadAppData();
+    renderAll();
+  },
+
+  refreshUI() {
+    renderAll();
+  },
+
+  toast: showToast
+};
+
+window.dispatchEvent(
+  new Event(
+    "momo-local-trip-share-ready"
+  )
+);

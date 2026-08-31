@@ -25,7 +25,8 @@ import {
   writeBatch,
   serverTimestamp,
   query,
-  where
+  where,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -1011,6 +1012,379 @@ async function getPushStatus() {
     : { enabled: false, message: "Optional. No account needed. Enable alerts on this phone, then choose which Gentle Reminders may notify you." };
 }
 
+// =====================================================
+// MOMO SHARED TRIP CLOUD BRIDGE
+// Uses the visible Account & Cloud auth session only. The anonymous
+// momo-notifications session remains completely separate.
+// =====================================================
+
+const TRIP_SHARE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function tripShareBytesToBase64(bytes) {
+  let binary = "";
+  bytes.forEach((value) => {
+    binary += String.fromCharCode(value);
+  });
+  return btoa(binary);
+}
+
+function tripShareBase64ToBytes(value) {
+  const binary = atob(value || "");
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function encodeTripShareUid(uid) {
+  return tripShareBytesToBase64(
+    new TextEncoder().encode(String(uid || ""))
+  )
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function decodeTripShareUid(encoded) {
+  let value = String(encoded || "")
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  while (value.length % 4) value += "=";
+  return new TextDecoder().decode(
+    tripShareBase64ToBytes(value)
+  );
+}
+
+function cleanTripShareToken(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
+function generateTripShareToken() {
+  const bytes = new Uint8Array(14);
+  crypto.getRandomValues(bytes);
+  return Array.from(
+    bytes,
+    (value) => TRIP_SHARE_ALPHABET[value % TRIP_SHARE_ALPHABET.length]
+  ).join("");
+}
+
+function makeTripShareCode(ownerUid, token) {
+  return `MT1.${encodeTripShareUid(ownerUid)}.${cleanTripShareToken(token)}`;
+}
+
+function normalizeTripShareInput(raw) {
+  let value = String(raw || "")
+    .trim()
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .replace(/[。．]/g, ".");
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const parsed = new URL(value);
+      value = parsed.searchParams.get("momoTrip") || parsed.searchParams.get("tripShare") || value;
+    } catch {}
+  }
+
+  const embedded = value.match(/MT1\s*\.\s*([A-Za-z0-9_-]{6,})\s*\.\s*([A-Za-z0-9]{10,})/i);
+  if (embedded) return `MT1.${embedded[1]}.${embedded[2]}`;
+  return value.replace(/\s+/g, "");
+}
+
+function parseTripShareCode(raw) {
+  const value = normalizeTripShareInput(raw);
+  const parts = value.split(".");
+  if (parts[0]?.toUpperCase() !== "MT1" || parts.length !== 3) {
+    throw new Error("Momo could not find a complete shared-trip invite in what was pasted.");
+  }
+
+  let ownerUid = "";
+  try {
+    ownerUid = decodeTripShareUid(parts[1]);
+  } catch {}
+  const token = cleanTripShareToken(parts[2]);
+  if (!ownerUid || token.length < 10) {
+    throw new Error("That shared-trip invite is not valid. Copy it again directly from Momo.");
+  }
+
+  return {
+    ownerUid,
+    token,
+    code: makeTripShareCode(ownerUid, token)
+  };
+}
+
+function validateTripShareCode(raw) {
+  try {
+    const parsed = parseTripShareCode(raw);
+    return {
+      valid: true,
+      ...parsed,
+      message: "Valid Momo trip invite ✓"
+    };
+  } catch (error) {
+    return {
+      valid: false,
+      message: String(error?.message || error || "Invalid Momo trip invite")
+    };
+  }
+}
+
+function requireTripShareUser() {
+  if (!isRealAccountUser()) {
+    throw new Error("Sign in to your Momo Account & Cloud profile first.");
+  }
+  return currentUser;
+}
+
+const tripInviteRef = (ownerUid, token) =>
+  doc(cloudDb, "users", ownerUid, "momoTripInvites", token);
+
+const tripSharedExpensesRef = (ownerUid, token) =>
+  collection(cloudDb, "users", ownerUid, "momoTripShared", token, "expenses");
+
+const tripSharedExpenseRef = (ownerUid, token, expenseId) =>
+  doc(cloudDb, "users", ownerUid, "momoTripShared", token, "expenses", String(expenseId));
+
+function publicTripShareUser(user = currentUser) {
+  return isRealAccountUser(user)
+    ? {
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "",
+        photoURL: user.photoURL || ""
+      }
+    : null;
+}
+
+async function createTripShareInvite(trip = {}) {
+  const user = requireTripShareUser();
+  const token = generateTripShareToken();
+  const code = makeTripShareCode(user.uid, token);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
+  const data = {
+    schemaVersion: 1,
+    status: "open",
+    code,
+    token,
+    ownerUid: user.uid,
+    ownerName: user.displayName || "",
+    ownerEmail: user.email || "",
+    partnerUid: "",
+    partnerName: "",
+    partnerEmail: "",
+    trip: {
+      name: String(trip.name || "Trip"),
+      destination: String(trip.destination || ""),
+      startDate: String(trip.startDate || ""),
+      endDate: String(trip.endDate || ""),
+      budget: Number(trip.budget || 0),
+      currency: String(trip.currency || "PHP"),
+      dailyBudget: Number(trip.dailyBudget || 0)
+    },
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    expiresAt
+  };
+
+  await setDoc(tripInviteRef(user.uid, token), data);
+  return data;
+}
+
+async function acceptTripShareInvite(rawCode) {
+  const user = requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  if (parsed.ownerUid === user.uid) {
+    throw new Error("Open this trip invite on Martin’s Momo account, not the account that created it.");
+  }
+
+  const ref = tripInviteRef(parsed.ownerUid, parsed.token);
+  const snapshot = await getDoc(ref);
+  if (!snapshot.exists()) {
+    throw new Error("This Momo trip invite no longer exists.");
+  }
+
+  const invite = snapshot.data() || {};
+  if (invite.status === "active") {
+    if (invite.partnerUid === user.uid) return { ...invite, ...parsed };
+    throw new Error("This trip invite is already connected to another account.");
+  }
+  if (invite.status !== "open") {
+    throw new Error("This Momo trip invite is no longer active.");
+  }
+  if (invite.expiresAt && new Date(invite.expiresAt).getTime() < Date.now()) {
+    throw new Error("This trip invite has expired. Ask for a fresh invite from Momo.");
+  }
+
+  const accepted = {
+    status: "active",
+    partnerUid: user.uid,
+    partnerName: user.displayName || "",
+    partnerEmail: user.email || "",
+    acceptedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  await setDoc(ref, accepted, { merge: true });
+  return {
+    ...invite,
+    ...accepted,
+    ...parsed
+  };
+}
+
+function watchTripShareInvite(rawCode, callback) {
+  requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  return onSnapshot(
+    tripInviteRef(parsed.ownerUid, parsed.token),
+    (snapshot) => {
+      callback?.(
+        snapshot.exists()
+          ? { ...snapshot.data(), ...parsed }
+          : null
+      );
+    },
+    (error) => {
+      console.warn("Momo shared trip invite listener:", error);
+    }
+  );
+}
+
+function watchTripSharedExpenses(rawCode, callback) {
+  requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  return onSnapshot(
+    tripSharedExpensesRef(parsed.ownerUid, parsed.token),
+    (snapshot) => {
+      callback?.({
+        docs: snapshot.docs.map((item) => ({
+          ...item.data(),
+          expenseId: item.data()?.expenseId || item.id
+        }))
+      });
+    },
+    (error) => {
+      console.warn("Momo shared trip expense listener:", error);
+    }
+  );
+}
+
+async function upsertTripSharedExpense(rawCode, payload = {}) {
+  const user = requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  const expenseId = String(payload.expenseId || "");
+  if (!expenseId) throw new Error("This shared expense is missing its ID.");
+
+  await setDoc(
+    tripSharedExpenseRef(parsed.ownerUid, parsed.token, expenseId),
+    {
+      ...payload,
+      schemaVersion: 1,
+      expenseId,
+      tripShareOwnerUid: parsed.ownerUid,
+      tripShareToken: parsed.token,
+      deleted: false,
+      lastEditedByUid: user.uid,
+      lastEditedByName: user.displayName || user.email || "Momo partner"
+    }
+  );
+  return true;
+}
+
+async function tombstoneTripSharedExpense(rawCode, expenseId, payload = {}) {
+  const user = requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  const id = String(expenseId || "");
+  if (!id) return false;
+
+  await setDoc(
+    tripSharedExpenseRef(parsed.ownerUid, parsed.token, id),
+    {
+      schemaVersion: 1,
+      expenseId: id,
+      tripShareOwnerUid: parsed.ownerUid,
+      tripShareToken: parsed.token,
+      deleted: true,
+      lastEditedByUid: user.uid,
+      lastEditedByName: user.displayName || user.email || "Momo partner",
+      updatedAtMs: Number(payload.updatedAtMs || Date.now()),
+      updatedAt: String(payload.updatedAt || new Date().toISOString()),
+      createdByUid: String(payload.createdByUid || ""),
+      createdByName: String(payload.createdByName || "")
+    },
+    { merge: true }
+  );
+  return true;
+}
+
+async function updateTripShareMeta(rawCode, trip = {}) {
+  const user = requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  if (user.uid !== parsed.ownerUid) return false;
+
+  await setDoc(
+    tripInviteRef(parsed.ownerUid, parsed.token),
+    {
+      trip: {
+        name: String(trip.name || "Trip"),
+        destination: String(trip.destination || ""),
+        startDate: String(trip.startDate || ""),
+        endDate: String(trip.endDate || ""),
+        budget: Number(trip.budget || 0),
+        currency: String(trip.currency || "PHP"),
+        dailyBudget: Number(trip.dailyBudget || 0)
+      },
+      updatedAt: new Date().toISOString()
+    },
+    { merge: true }
+  );
+  return true;
+}
+
+async function disconnectTripShare(rawCode) {
+  const user = requireTripShareUser();
+  const parsed = parseTripShareCode(rawCode);
+  const ref = tripInviteRef(parsed.ownerUid, parsed.token);
+  const snapshot = await getDoc(ref);
+  if (!snapshot.exists()) return true;
+  const invite = snapshot.data() || {};
+
+  if (user.uid !== parsed.ownerUid && user.uid !== invite.partnerUid) {
+    throw new Error("This Momo account is not part of that shared trip.");
+  }
+
+  const nextStatus = invite.status === "open" && user.uid === parsed.ownerUid
+    ? "cancelled"
+    : "disconnected";
+
+  await setDoc(
+    ref,
+    {
+      status: nextStatus,
+      disconnectedAt: new Date().toISOString(),
+      disconnectedBy: user.uid,
+      updatedAt: new Date().toISOString()
+    },
+    { merge: true }
+  );
+  return true;
+}
+
+window.MomoTripCloud = {
+  getUser: () => publicTripShareUser(),
+  validateCode: validateTripShareCode,
+  createInvite: createTripShareInvite,
+  acceptInvite: acceptTripShareInvite,
+  watchInvite: watchTripShareInvite,
+  watchExpenses: watchTripSharedExpenses,
+  upsertExpense: upsertTripSharedExpense,
+  tombstoneExpense: tombstoneTripSharedExpense,
+  updateTripMeta: updateTripShareMeta,
+  disconnectInvite: disconnectTripShare
+};
+
+window.dispatchEvent(new Event("momo-trip-cloud-ready"));
+
 window.MomoPush = {
   enable: enablePush,
   disable: disablePush,
@@ -1083,6 +1457,19 @@ async function init() {
   onAuthStateChanged(auth, async (user) => {
     currentUser = user;
     cloudMetadata = null;
+
+    window.dispatchEvent(
+      new CustomEvent(
+        "momo-cloud-auth-change",
+        {
+          detail: {
+            user: publicTripShareUser(
+              user
+            )
+          }
+        }
+      )
+    );
 
     // One-time migration for older notification builds. Push ownership used to
     // share the Account & Cloud Auth instance. Move it to the dedicated hidden
