@@ -1,0 +1,88 @@
+name: Momo shared trip integration QA
+on:
+  push:
+    branches: [feature/shared-trip-expenses]
+permissions:
+  contents: write
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/shared-trip-expenses
+          fetch-depth: 0
+
+      - name: Apply shared trip integration
+        run: python3 scripts/momo-shared-trip-patch.py
+
+      - name: Static safety checks
+        run: |
+          node --check app.js
+          node --check firebase-momo.js
+          node --check service-worker.js
+          node --check smart-money.js
+          node --check trip-sharing.js
+          node --check scripts/send-reminders.mjs
+          grep -q 'const DB_VERSION = 4;' app.js
+          grep -q 'momo-notifications' firebase-momo.js
+          grep -q 'CLOUD_AUTO_BACKUP_HOUR = 8' firebase-momo.js
+          grep -q 'window.MomoTripCloud' firebase-momo.js
+          grep -q 'window.MomoLocalTripShare' app.js
+          grep -q 'src="trip-sharing.js"' index.html
+          grep -q '"./trip-sharing.js"' service-worker.js
+          grep -Fq 'momo-runtime-shell-v${APP_VERSION}-shared-trip-r1' service-worker.js
+          ! grep -q 'MutationObserver' trip-sharing.js
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text()
+          ids = re.findall(r'\bid="([^"]+)"', html)
+          duplicates = sorted({item for item in ids if ids.count(item) > 1})
+          assert not duplicates, f'Duplicate HTML ids: {duplicates}'
+          assert html.index('src="app.js"') < html.index('src="trip-sharing.js"')
+          assert html.count('src="trip-sharing.js"') == 1
+          share = Path('trip-sharing.js').read_text()
+          assert 'paymentMethod:' not in share[share.index('function cloudExpensePayload'):share.index('function tombstonePayload')]
+          assert 'photo:' not in share[share.index('function cloudExpensePayload'):share.index('function tombstonePayload')]
+          assert 'momo_shared_trip_outbox_v1' in share
+          assert 'metadata-only' in share
+          fb = Path('firebase-momo.js').read_text()
+          assert 'const notificationApp = initializeApp(firebaseConfig, "momo-notifications")' in fb
+          assert 'const tripInviteRef' in fb
+          assert 'cloudDb, "users", ownerUid, "momoTripInvites"' in fb
+          assert 'notificationDb' not in fb[fb.index('// MOMO SHARED TRIP CLOUD BRIDGE'):fb.index('window.MomoPush =')]
+          PY
+          git diff --check
+
+      - name: Browser setup
+        run: |
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install chromium >/dev/null 2>&1
+
+      - name: Two-phone mobile collaboration QA
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-shared-trip-http.log 2>&1 &
+          node scripts/momo-shared-trip-qa.mjs
+
+      - name: Clean QA and commit production changes
+        run: |
+          rm -rf node_modules
+          rm -f package.json package-lock.json
+          rm -f scripts/momo-shared-trip-patch.py
+          rm -f scripts/momo-shared-trip-qa.mjs
+          rm -f .github/workflows/momo-shared-trip-qa.yml
+          test ! -e node_modules
+          test ! -e package.json
+          test ! -e package-lock.json
+          test ! -e scripts/momo-shared-trip-patch.py
+          test ! -e scripts/momo-shared-trip-qa.mjs
+          test ! -e .github/workflows/momo-shared-trip-qa.yml
+          git config user.name "Momo Release Bot"
+          git config user.email "momo-release-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git status --short
+          git commit -m "Add private shared trip expense collaboration"
+          git push origin HEAD:feature/shared-trip-expenses
