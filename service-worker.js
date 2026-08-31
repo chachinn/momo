@@ -8,7 +8,7 @@ const APP_VERSION =
 
 
 const CACHE_NAME =
-  `momo-runtime-shell-v${APP_VERSION}-travel-compact-r1`;
+  `momo-runtime-shell-v${APP_VERSION}-shared-trip-r1`;
 
 
 const CORE_SHELL = [
@@ -17,7 +17,8 @@ const CORE_SHELL = [
   "./styles.css",
   "./app.js",
   "./firebase-momo.js",
-  "./smart-money.js"
+  "./smart-money.js",
+  "./trip-sharing.js"
 ];
 
 

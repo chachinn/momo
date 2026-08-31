@@ -86,13 +86,19 @@
     const outbox = readOutbox();
     const key = `${operation.kind}:${operation.code}:${operation.expenseId || operation.tripId || "meta"}`;
     const filtered = outbox.filter((item) => item.key !== key);
+
+    // Keep the persistent retry queue metadata-only. Titles, amounts and notes
+    // remain in IndexedDB; they are reconstructed only when a retry actually runs.
     filtered.push({
-      ...operation,
       key,
+      kind: operation.kind,
+      code: operation.code,
+      expenseId: operation.expenseId || "",
+      tripId: operation.tripId || "",
       queuedAt: Date.now()
     });
+
     writeOutbox(filtered);
-    flushOutbox().catch(() => {});
   }
 
   function permissionMessage(error) {
@@ -114,7 +120,8 @@
   async function flushOutbox() {
     if (flushInFlight || !navigator.onLine || !isSignedIn()) return;
     const cloud = cloudApi();
-    if (!cloud?.upsertExpense || !cloud?.tombstoneExpense) return;
+    const api = localApi();
+    if (!cloud?.upsertExpense || !cloud?.tombstoneExpense || !api) return;
 
     flushInFlight = true;
     try {
@@ -125,11 +132,37 @@
       for (const item of pending) {
         try {
           if (item.kind === "expense") {
-            await cloud.upsertExpense(item.code, item.payload);
+            const expense = (api.getExpenses?.() || []).find(
+              (entry) =>
+                entry.sharedTripCode === item.code &&
+                (entry.sharedExpenseId || entry.id) === item.expenseId
+            );
+
+            if (expense?.sharedTripExpense) {
+              await cloud.upsertExpense(
+                item.code,
+                cloudExpensePayload(expense)
+              );
+            }
           } else if (item.kind === "tombstone") {
-            await cloud.tombstoneExpense(item.code, item.expenseId, item.payload);
+            await cloud.tombstoneExpense(
+              item.code,
+              item.expenseId,
+              {
+                updatedAtMs: Date.now(),
+                updatedAt: nowISO()
+              }
+            );
           } else if (item.kind === "tripMeta") {
-            await cloud.updateTripMeta(item.code, item.payload);
+            const trip = (api.getTrips?.() || []).find(
+              (entry) => entry.sharedTripCode === item.code
+            );
+            if (trip?.sharedTripRole === "owner") {
+              await cloud.updateTripMeta(
+                item.code,
+                tripMetaPayload(trip)
+              );
+            }
           }
         } catch (error) {
           remaining.push(item);
@@ -265,35 +298,62 @@
     };
   }
 
+  async function sendTombstoneOrQueue(expense) {
+    if (!expense?.sharedTripCode) return;
+    const code = expense.sharedTripCode;
+    const expenseId = expense.sharedExpenseId || expense.id;
+
+    if (navigator.onLine && isSignedIn()) {
+      try {
+        await cloudApi()?.tombstoneExpense?.(
+          code,
+          expenseId,
+          tombstonePayload(expense)
+        );
+        return;
+      } catch (error) {
+        maybeShowSyncError(error);
+      }
+    }
+
+    queueOperation({
+      kind: "tombstone",
+      code,
+      expenseId
+    });
+  }
+
   async function onExpenseSaved(expense, previous) {
     if (remoteApplyInFlight) return;
 
     if (previous?.sharedTripCode && previous.sharedTripCode !== expense?.sharedTripCode) {
-      queueOperation({
-        kind: "tombstone",
-        code: previous.sharedTripCode,
-        expenseId: previous.sharedExpenseId || previous.id,
-        payload: tombstonePayload(previous)
-      });
+      await sendTombstoneOrQueue(previous);
     }
 
     if (!expense?.sharedTripExpense || !expense?.sharedTripCode) return;
+
+    if (navigator.onLine && isSignedIn()) {
+      try {
+        await cloudApi()?.upsertExpense?.(
+          expense.sharedTripCode,
+          cloudExpensePayload(expense)
+        );
+        return;
+      } catch (error) {
+        maybeShowSyncError(error);
+      }
+    }
+
     queueOperation({
       kind: "expense",
       code: expense.sharedTripCode,
-      expenseId: expense.sharedExpenseId || expense.id,
-      payload: cloudExpensePayload(expense)
+      expenseId: expense.sharedExpenseId || expense.id
     });
   }
 
   async function onExpenseDeleted(expense) {
     if (remoteApplyInFlight || !expense?.sharedTripCode) return;
-    queueOperation({
-      kind: "tombstone",
-      code: expense.sharedTripCode,
-      expenseId: expense.sharedExpenseId || expense.id,
-      payload: tombstonePayload(expense)
-    });
+    await sendTombstoneOrQueue(expense);
   }
 
   function tripMetaPayload(trip) {
@@ -311,11 +371,23 @@
 
   async function onTripSaved(trip) {
     if (remoteApplyInFlight || trip?.sharedTripRole !== "owner" || !trip?.sharedTripCode) return;
+
+    if (navigator.onLine && isSignedIn()) {
+      try {
+        await cloudApi()?.updateTripMeta?.(
+          trip.sharedTripCode,
+          tripMetaPayload(trip)
+        );
+        return;
+      } catch (error) {
+        maybeShowSyncError(error);
+      }
+    }
+
     queueOperation({
       kind: "tripMeta",
       code: trip.sharedTripCode,
-      tripId: trip.id,
-      payload: tripMetaPayload(trip)
+      tripId: trip.id
     });
   }
 
@@ -486,18 +558,20 @@
     if (!api || !trip?.sharedTripCode) return;
     const candidates = (api.getExpenses?.() || []).filter((expense) => expense.tripId === trip.id);
     let changed = false;
+
     for (const expense of candidates) {
       const decorated = decorateExpenseForTrip(expense, expense, trip);
       await api.upsertExpense?.(decorated, { refresh: false });
       queueOperation({
         kind: "expense",
         code: trip.sharedTripCode,
-        expenseId: decorated.sharedExpenseId || decorated.id,
-        payload: cloudExpensePayload(decorated)
+        expenseId: decorated.sharedExpenseId || decorated.id
       });
       changed = true;
     }
+
     if (changed) await api.refresh?.();
+    flushOutbox().catch(() => {});
   }
 
   async function detachShareLocally(trip) {
@@ -521,7 +595,7 @@
     document.body.insertAdjacentHTML(
       "beforeend",
       `
-        <div id="tripShareModal" class="modal trip-share-modal" hidden>
+        <div id="tripShareModal" class="modal-backdrop trip-share-modal" hidden>
           <div class="modal-card trip-share-card" role="dialog" aria-modal="true" aria-labelledby="tripShareTitle">
             <div class="modal-header">
               <div>
@@ -806,7 +880,18 @@
     document.addEventListener(
       "click",
       (event) => {
-        const deleteButton = event.target.closest?.(".delete-trip");
+        const editButton = event.target.closest?.(".edit-trip");
+      if (editButton) {
+        const trip = getTripById(editButton.dataset.tripId);
+        if (trip?.sharedTripCode && trip.sharedTripRole === "partner") {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          localApi()?.toast?.("Trip details are managed by the person who shared it. You can update the trip expenses together.");
+          return;
+        }
+      }
+
+      const deleteButton = event.target.closest?.(".delete-trip");
         if (!deleteButton) return;
         const trip = getTripById(deleteButton.dataset.tripId);
         if (!trip?.sharedTripCode) return;
