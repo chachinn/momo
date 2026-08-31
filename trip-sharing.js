@@ -641,7 +641,7 @@
       </div>
       <div class="trip-share-button-row">
         <button id="copyTripShareCode" class="secondary-btn" type="button">Copy invite</button>
-        <button id="sendTripShareCode" class="primary-btn" type="button">Share with Martin</button>
+        <button id="sendTripShareCode" class="primary-btn" type="button">Share invite</button>
       </div>
     `;
   }
@@ -737,7 +737,7 @@
         <div class="trip-share-empty compact">
           <div class="trip-share-hero">💕</div>
           <h3>Share only this trip</h3>
-          <p>Martin will be able to add, edit and delete expenses linked to <strong>${escapeHTML(trip.name)}</strong>. Both phones will see the same trip spending total.</p>
+          <p>Your travel partner will be able to add, edit and delete expenses linked to <strong>${escapeHTML(trip.name)}</strong>. Both phones will see the same trip spending total.</p>
           <small>Other expenses, cards, payables, savings, Smart Money history, receipts and settings stay private.</small>
         </div>
         <button id="createTripShareInvite" class="primary-btn trip-share-connect" type="button">Create private invite</button>
