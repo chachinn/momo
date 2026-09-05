@@ -1,0 +1,54 @@
+name: Temporary Private Payable Calculation QA
+
+on:
+  push:
+    branches:
+      - fix/payables-monthly-focus
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/payables-monthly-focus
+          fetch-depth: 0
+
+      - name: Apply calculation refinement
+        run: python3 .github/qa/refine-private-payable-calcs.py
+
+      - name: Syntax and focused checks
+        run: |
+          node --check app.js
+          node --check smart-money.js
+          grep -F 'protectedCommitments: financialMonthSchedule.totalPHP' app.js
+          grep -F 'Payable amounts stay private on Home but are still protected in Safe to Spend.' app.js
+          grep -F 'const visibleUpcoming = showPayablesOnHome' smart-money.js
+          grep -F 'updateExistingSafeToSpend(result.safe, result.showPayablesOnHome)' smart-money.js
+
+      - name: Install browser
+        run: npx -y playwright@1.55.0 install --with-deps chromium
+
+      - name: Mobile browser QA
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          mkdir -p /tmp/momo-playwright
+          cp .github/qa/refine-private-payable-calcs-qa.mjs /tmp/momo-playwright/qa.mjs
+          cd /tmp/momo-playwright
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          node qa.mjs
+
+      - name: Commit tested production refinement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js smart-money.js
+          git commit -m "Keep private payables in Safe to Spend"
+          git push origin HEAD:fix/payables-monthly-focus
