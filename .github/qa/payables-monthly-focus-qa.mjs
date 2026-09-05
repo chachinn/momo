@@ -11,8 +11,16 @@ const page = await context.newPage();
 const pageErrors = [];
 page.on('pageerror', (error) => pageErrors.push(String(error)));
 
+const dismissTips = async () => {
+  await page.evaluate(() => {
+    if (typeof closeWelcomeTour === 'function') closeWelcomeTour(false);
+    if (typeof closeContextTip === 'function') closeContextTip(false);
+  });
+};
+
 await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
 await page.waitForTimeout(700);
+await dismissTips();
 
 await page.evaluate(async () => {
   const request = indexedDB.open('momo_database', 4);
@@ -67,6 +75,7 @@ await page.evaluate(async () => {
 
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
+await dismissTips();
 
 const hiddenStates = await page.locator('[data-home-payables]').evaluateAll((nodes) =>
   nodes.map((node) => ({ hidden: node.hidden, display: getComputedStyle(node).display }))
@@ -87,8 +96,10 @@ assert(!knows.includes('BPI'));
 await page.evaluate(() => {
   showScreen('payables');
   renderPayables();
+  if (typeof closeContextTip === 'function') closeContextTip(false);
 });
 await page.waitForTimeout(150);
+await dismissTips();
 
 const summary = (await page.locator('#payablesTotal').innerText()).replaceAll(',', '');
 assert(summary.includes('3730.46'));
@@ -99,6 +110,7 @@ assert(rowAmount.includes('3730.46'));
 assert(!rowAmount.includes('41044.47'));
 assert((await page.locator('.payable-item em').first().innerText()).includes('Monthly payment'));
 
+await dismissTips();
 await page.locator('.payable-item').first().click();
 await page.waitForTimeout(100);
 const detailHero = (await page.locator('.payable-detail-hero strong').innerText()).replaceAll(',', '');
@@ -113,8 +125,10 @@ await page.evaluate(async () => {
   applyMomoHomeLayout();
   renderMomoToday();
   showScreen('home');
+  if (typeof closeContextTip === 'function') closeContextTip(false);
 });
 await page.waitForTimeout(700);
+await dismissTips();
 
 const visibleStates = await page.locator('[data-home-payables]').evaluateAll((nodes) =>
   nodes.map((node) => ({ hidden: node.hidden, display: getComputedStyle(node).display }))
@@ -129,7 +143,10 @@ assert(homePayable.includes('3730.46'));
 assert(!homePayable.includes('41044.47'));
 
 for (const screen of ['home', 'payables']) {
-  await page.evaluate((name) => showScreen(name), screen);
+  await page.evaluate((name) => {
+    showScreen(name);
+    if (typeof closeContextTip === 'function') closeContextTip(false);
+  }, screen);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
   assert.equal(overflow, false, `${screen} has horizontal overflow`);
 }
