@@ -188,15 +188,13 @@
       });
     });
 
-    if (payablesVisibleOnHome(snapshot)) {
-      snapshot.cards.forEach((item) => {
-        const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
-        if (!due || due < startOfDay(now) || due > end) return;
-        const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
-        if (amount <= 0) return;
-        items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
-      });
-    }
+    snapshot.cards.forEach((item) => {
+      const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
+      if (!due || due < startOfDay(now) || due > end) return;
+      const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
+      if (amount <= 0) return;
+      items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
+    });
 
     snapshot.planned.forEach((item) => {
       const due = parseDate(item?.targetDate || item?.date);
@@ -448,6 +446,7 @@ function computeSafeToSpend(snapshot, now, spend, upcoming) {
     const future = futureBuyImpact(snapshot, forecastData);
     const jar = jarPacing(snapshot, now);
     const debt = debtSuggestion(snapshot);
+    const showPayablesOnHome = payablesVisibleOnHome(snapshot);
 
     const insights = [];
 
@@ -456,7 +455,9 @@ function computeSafeToSpend(snapshot, now, spend, upcoming) {
         icon: "🍑",
         tone: "good",
         title: `About ${money(safe.today)} is flexible today`,
-        body: `${money(safe.flexible)} remains after Momo protects upcoming commitments${safe.protectedAmount > 0 ? ` (${money(safe.protectedAmount)})` : ""}.`
+        body: showPayablesOnHome
+          ? `${money(safe.flexible)} remains after Momo protects upcoming commitments${safe.protectedAmount > 0 ? ` (${money(safe.protectedAmount)})` : ""}.`
+          : `${money(safe.flexible)} remains after Momo protects your upcoming commitments and savings. Payable amounts stay private on Home.`
       });
     }
 
@@ -469,8 +470,12 @@ function computeSafeToSpend(snapshot, now, spend, upcoming) {
       insights.push({ icon: "◔", tone: forecastData.projectedBuffer < 0 ? "watch" : "neutral", title: "Month-end forecast", body: bufferCopy });
     }
 
-    if (upcoming.length) {
-      const firstWeek = upcoming.filter((item) => daysBetween(now, item.date) <= 7);
+    const visibleUpcoming = showPayablesOnHome
+      ? upcoming
+      : upcoming.filter((item) => item.type !== "Payable");
+
+    if (visibleUpcoming.length) {
+      const firstWeek = visibleUpcoming.filter((item) => daysBetween(now, item.date) <= 7);
       const pressure = firstWeek.reduce((sum, item) => sum + item.amount, 0);
       if (pressure > 0) {
         insights.push({
@@ -508,16 +513,13 @@ function computeSafeToSpend(snapshot, now, spend, upcoming) {
       insights.push({ icon: "🌱", tone: "good", title: `${jar.name}: about ${money(jar.neededMonthly)}/month`, body: `That pace would reach the target in roughly ${jar.monthsLeft} month${jar.monthsLeft === 1 ? "" : "s"}, based on the saved balance Momo can see.` });
     }
 
-    const homeLayout = snapshot.settingMap.get("momo_home_layout_v1");
-    const showPayablesOnHome = Boolean(homeLayout && homeLayout.showPayablesOnHome === true);
-
     if (showPayablesOnHome && debt && debt.count > 0) {
       const target = debt.highestApr?.apr > 0 ? debt.highestApr : debt.smallest;
       const strategy = debt.highestApr?.apr > 0 ? "highest-interest" : "smallest-balance";
       insights.push({ icon: "🌸", tone: "neutral", title: `${money(debt.total)} remains across payables`, body: `For an optional faster-payoff view, Momo would prioritize the ${strategy} balance first: ${text(target?.item?.name || target?.item?.title || "a payable")}.` });
     }
 
-    return { insights, safe, forecastData, upcoming, learnedMerchants: merchantLearning(snapshot) };
+    return { insights, safe, forecastData, upcoming, showPayablesOnHome, learnedMerchants: merchantLearning(snapshot) };
   }
 
   function ensureStyles() {
@@ -560,18 +562,20 @@ function computeSafeToSpend(snapshot, now, spend, upcoming) {
     return section;
   }
 
-  function updateExistingSafeToSpend(safe) {
+  function updateExistingSafeToSpend(safe, showPayablesOnHome) {
     const amount = document.getElementById("momoSafeToday");
     const explanation = document.getElementById("momoSafeExplanation");
     if (!amount || !explanation || safe.base <= 0) return;
     amount.textContent = money(safe.today);
-    explanation.textContent = `${money(safe.flexible)} flexible after protecting ${money(safe.protectedAmount)} in upcoming commitments and savings.`;
+    explanation.textContent = showPayablesOnHome
+      ? `${money(safe.flexible)} flexible after protecting ${money(safe.protectedAmount)} in upcoming commitments and savings.`
+      : `${money(safe.flexible)} flexible after protecting your upcoming commitments and savings. Payable amounts stay private on Home.`;
   }
 
   function renderInsights(result) {
     ensureStyles();
     if (!ensureSection()) return;
-    updateExistingSafeToSpend(result.safe);
+    updateExistingSafeToSpend(result.safe, result.showPayablesOnHome);
 
     const list = document.getElementById("momoKnowsList");
     if (!list) return;

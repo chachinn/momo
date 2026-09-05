@@ -21284,8 +21284,11 @@ function getMomoTodaySnapshot({ includePayables = true } = {}) {
   const protectedSavingsRemaining = getProtectedSavingsRemainingPHP(monthKey);
   const monthSchedule = buildScheduledCashFlow(today, monthEnd, { includePayables });
   const sevenDaySchedule = buildScheduledCashFlow(today, sevenDayEnd, { includePayables });
+  const financialMonthSchedule = includePayables
+    ? monthSchedule
+    : buildScheduledCashFlow(today, monthEnd, { includePayables: true });
   const cushion = baseAmount > 0
-    ? baseAmount - spent - saved - protectedSavingsRemaining - monthSchedule.totalPHP
+    ? baseAmount - spent - saved - protectedSavingsRemaining - financialMonthSchedule.totalPHP
     : null;
   const daysRemaining = Math.max(
     1,
@@ -21308,6 +21311,7 @@ function getMomoTodaySnapshot({ includePayables = true } = {}) {
     protectedSavingsRemaining,
     projectedCommitments: monthSchedule.totalPHP,
     dueNext7Days: sevenDaySchedule.totalPHP,
+    protectedCommitments: financialMonthSchedule.totalPHP,
     cushion,
     safePerDay,
     daysRemaining
@@ -21362,9 +21366,12 @@ function renderMomoToday() {
     if (snapshot.baseAmount <= 0) {
       explanation.textContent =
         "Add monthly income or a monthly budget and Momo can estimate a gentle daily amount after spending, savings, and known upcoming commitments.";
-    } else {
+    } else if (showPayablesOnHome) {
       explanation.textContent =
         `Based on your ${snapshot.baseLabel}, minus ${formatPHP(snapshot.spent)} already spent, ${formatPHP(snapshot.saved)} saved this month, ${formatPHP(snapshot.protectedSavingsRemaining)} still protected for Peach Jars, and ${formatPHP(snapshot.projectedCommitments)} in known upcoming commitments. ${snapshot.daysRemaining} day${snapshot.daysRemaining === 1 ? "" : "s"} remain this month.`;
+    } else {
+      explanation.textContent =
+        `Based on your ${snapshot.baseLabel}, spending, savings, and known upcoming commitments. Payable amounts stay private on Home but are still protected in Safe to Spend. ${snapshot.daysRemaining} day${snapshot.daysRemaining === 1 ? "" : "s"} remain this month.`;
     }
   }
 
