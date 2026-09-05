@@ -95,7 +95,7 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
   await page.locator('[data-payable-pay="qa-card"]').click();
   await page.locator('#payablePaymentAmount').fill('3730.46');
   await page.locator('#payablePaymentDate').fill('2026-10-06');
-  await page.getByRole('button', { name: 'Record Payment' }).click();
+  await page.locator('#payablePaymentForm button[type="submit"]').click();
   await expect(page.locator('#payablePaymentModal')).toBeHidden();
 
   saved = await readCard(page, 'qa-card');
