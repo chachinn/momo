@@ -135,7 +135,7 @@
 
   function payablesVisibleOnHome(snapshot) {
     const layout = snapshot.settingMap.get("momo_home_layout_v1");
-    return Boolean(layout && layout.showPayablesOnHome === true);
+    return layout?.showPayablesOnHome !== false;
   }
 
   function monthlyExpenses(snapshot, now) {

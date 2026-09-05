@@ -21321,7 +21321,7 @@ function getMomoTodaySnapshot({ includePayables = true } = {}) {
 
 function getActivePayablesForHome(limit = 3) {
   return cards
-    .filter((item) => getPayableBalance(item) > 0)
+    .filter((item) => isPayableWaitingThisMonth(item))
     .sort((a, b) => {
       const aDate = a.dueDate || "9999-12-31";
       const bDate = b.dueDate || "9999-12-31";
@@ -37681,6 +37681,54 @@ function getPayablePaymentLabel(payable) {
   }
 }
 
+function getPayableMonthKey(dateString = getTodayString()) {
+  const date = createLocalDate(dateString);
+  if (!date) return "";
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getPayableMonthLabel(monthKey = getCurrentMonthKey()) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(monthKey || ""));
+  if (!match) return "this month";
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, 1);
+  return date.toLocaleDateString(undefined, { month: "long" });
+}
+
+function isPayableWaitingInMonth(payable, referenceDateString = getTodayString()) {
+  if (getPayableBalance(payable) <= 0) return false;
+  if (!payable?.dueDate) return true;
+
+  const due = createLocalDate(payable.dueDate);
+  const reference = createLocalDate(referenceDateString);
+  if (!due || !reference) return true;
+
+  const monthEnd = new Date(
+    reference.getFullYear(),
+    reference.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999
+  );
+
+  return due <= monthEnd;
+}
+
+function isPayableWaitingThisMonth(payable) {
+  return isPayableWaitingInMonth(payable, getTodayString());
+}
+
+function getPayableCycleCheckPayment(payable, monthKey = getCurrentMonthKey()) {
+  return [...getPayablePayments(payable)]
+    .reverse()
+    .find(
+      (payment) =>
+        payment?.source === "month-check" &&
+        payment?.paidMonth === monthKey
+    ) || null;
+}
+
 function payablePHPValue(payable, amount) {
   return convertCurrency(Number(amount || 0), payable?.currency || "PHP", "PHP");
 }
@@ -37782,20 +37830,28 @@ function renderPayables() {
   const empty = document.getElementById("payablesEmpty");
   if (!list || !empty) return;
 
-  const active = cards.filter((item) => getPayableBalance(item) > 0);
-  const nextPaymentsTotal = active.reduce(
+  const waiting = cards
+    .filter((item) => isPayableWaitingThisMonth(item))
+    .sort((a, b) => String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")));
+
+  const currentMonthKey = getCurrentMonthKey();
+  const paidCycleEntries = cards
+    .map((item) => ({ item, payment: getPayableCycleCheckPayment(item, currentMonthKey) }))
+    .filter((entry) => entry.payment)
+    .sort((a, b) => String(b.payment.date || "").localeCompare(String(a.payment.date || "")));
+
+  const nextPaymentsTotal = waiting.reduce(
     (sum, item) => sum + payablePHPValue(item, getPayableNextPaymentAmount(item)),
     0
   );
   const today = createLocalDate(getTodayString());
-  const soonLimit = new Date(today);
-  soonLimit.setDate(soonLimit.getDate() + 30);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  const dueSoon = active.reduce((sum, item) => {
+  const dueSoon = waiting.reduce((sum, item) => {
     const due = createLocalDate(item.dueDate);
-    if (!due || due < today || due > soonLimit) return sum;
-    const amount = Number(item.regularPayment || item.minimumDue || item.balance || 0);
-    return sum + payablePHPValue(item, Math.min(amount, getPayableBalance(item)));
+    if (!due || due < today || due > monthEnd) return sum;
+    const amount = getPayableNextPaymentAmount(item);
+    return sum + payablePHPValue(item, amount);
   }, 0);
 
   const now = new Date();
@@ -37816,59 +37872,88 @@ function renderPayables() {
   if (totalEl) totalEl.textContent = formatPHP(nextPaymentsTotal);
   if (dueEl) dueEl.textContent = formatPHP(dueSoon);
   if (paidEl) paidEl.textContent = formatPHP(paidMonth);
-  if (activeCountEl) activeCountEl.textContent = `${active.length} active`;
-  if (countEl) countEl.textContent = active.length ? `${active.length} ${active.length === 1 ? "thing" : "things"} waiting on you` : "Nothing waiting on you 🌸";
+  if (activeCountEl) activeCountEl.textContent = `${waiting.length} left`;
+  if (countEl) countEl.textContent = waiting.length
+    ? `${waiting.length} ${waiting.length === 1 ? "payment" : "payments"} left this month`
+    : "Nothing waiting this month 🌸";
 
-  const sorted = [...cards].sort((a, b) => {
-    const doneA = getPayableBalance(a) <= 0;
-    const doneB = getPayableBalance(b) <= 0;
-    if (doneA !== doneB) return doneA ? 1 : -1;
-    return String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
-  });
+  empty.hidden = cards.length > 0;
 
-  empty.hidden = sorted.length > 0;
+  const visiblePayables = waiting.slice(0, payableRenderLimit);
+  const monthLabel = getPayableMonthLabel(currentMonthKey);
 
+  const waitingMarkup = visiblePayables.length
+    ? visiblePayables.map((item) => {
+        const meta = getPayableMeta(item);
+        const balance = getPayableBalance(item);
+        const nextPayment = getPayableNextPaymentAmount(item);
+        const original = Number(item.originalAmount || 0);
+        const paidPercent = original > 0 ? Math.min(100, Math.max(0, ((original - balance) / original) * 100)) : 0;
+        const tone = payableDueTone(item.dueDate);
+        const dueCopy = item.dueDate ? `Due · ${formatShortDate(item.dueDate)}` : "No due date set";
+        return `
+          <div class="payable-cycle-row">
+            <button class="payable-item" type="button" data-payable-open="${escapeHTML(item.id)}">
+              <span class="payable-item-main">
+                <span class="payable-item-topline">
+                  <span>
+                    <strong>${escapeHTML(item.name || meta.label)}</strong>
+                    <small>${escapeHTML(item.provider || meta.label)}</small>
+                  </span>
+                  <b>${formatCurrency(nextPayment, item.currency || "PHP")}</b>
+                </span>
+                <span class="payable-progress"><i style="width:${paidPercent}%"></i></span>
+                <span class="payable-item-foot">
+                  <small class="${tone}">${dueCopy}</small>
+                  <em>${escapeHTML(getPayablePaymentLabel(item))}</em>
+                </span>
+              </span>
+            </button>
+            <label class="payable-month-check" aria-label="Mark ${escapeHTML(item.name || meta.label)} paid for ${escapeHTML(monthLabel)}">
+              <input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}">
+              <span aria-hidden="true">✓</span>
+              <em>Paid</em>
+            </label>
+          </div>`;
+      }).join("")
+    : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(monthLabel)}</strong><small>Anything due next month will come back automatically.</small></div>` : "");
 
-  const visiblePayables =
-    sorted.slice(
-      0,
-      payableRenderLimit
-    );
+  const loadMoreMarkup = visiblePayables.length < waiting.length
+    ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${waiting.length - visiblePayables.length} remaining)</button>`
+    : "";
 
+  const paidMarkup = paidCycleEntries.length
+    ? `
+      <section class="payables-cycle-done">
+        <div class="payables-cycle-done-heading">
+          <div><p class="section-kicker">Paid this month</p><h3>Done for ${escapeHTML(monthLabel)}</h3></div>
+          <span>${paidCycleEntries.length} ✓</span>
+        </div>
+        <div class="payables-cycle-done-list">
+          ${paidCycleEntries.map(({ item, payment }) => {
+            const nextDue = getPayableBalance(item) <= 0
+              ? "Fully paid"
+              : item.dueDate
+                ? `Back ${formatShortDate(item.dueDate)}`
+                : "No next due date";
+            return `
+              <div class="payable-cycle-row is-cycle-paid">
+                <button class="payable-paid-cycle-card" type="button" data-payable-open="${escapeHTML(item.id)}">
+                  <span><strong>${escapeHTML(item.name || getPayableMeta(item).label)}</strong><small>${nextDue}</small></span>
+                  <b>${formatCurrency(payment.amount, item.currency || "PHP")}</b>
+                </button>
+                <label class="payable-month-check is-checked" aria-label="Undo paid status for ${escapeHTML(item.name || getPayableMeta(item).label)}">
+                  <input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}" checked>
+                  <span aria-hidden="true">✓</span>
+                  <em>Paid</em>
+                </label>
+              </div>`;
+          }).join("")}
+        </div>
+      </section>`
+    : "";
 
-  list.innerHTML = visiblePayables.map((item) => {
-    const meta = getPayableMeta(item);
-    const balance = getPayableBalance(item);
-    const nextPayment = getPayableNextPaymentAmount(item);
-    const original = Number(item.originalAmount || 0);
-    const paidPercent = original > 0 ? Math.min(100, Math.max(0, ((original - balance) / original) * 100)) : 0;
-    const done = balance <= 0;
-    const tone = payableDueTone(item.dueDate);
-    const dueCopy = done ? "All paid! 🌸" : item.dueDate ? `Next payment · ${formatShortDate(item.dueDate)}` : "No due date set";
-    return `
-      <button class="payable-item ${done ? "is-paid" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}">
-        <span class="payable-item-main">
-          <span class="payable-item-topline">
-            <span>
-              <strong>${escapeHTML(item.name || meta.label)}</strong>
-              <small>${escapeHTML(item.provider || meta.label)}</small>
-            </span>
-            <b>${formatCurrency(nextPayment, item.currency || "PHP")}</b>
-          </span>
-          <span class="payable-progress"><i style="width:${paidPercent}%"></i></span>
-          <span class="payable-item-foot">
-            <small class="${tone}">${dueCopy}</small>
-            <em>${done ? "finished" : escapeHTML(getPayablePaymentLabel(item))}</em>
-          </span>
-        </span>
-      </button>`;
-  }).join("") +
-    (
-      visiblePayables.length <
-      sorted.length
-        ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${sorted.length - visiblePayables.length} remaining)</button>`
-        : ""
-    );
+  list.innerHTML = waitingMarkup + loadMoreMarkup + paidMarkup;
 }
 
 
@@ -38223,8 +38308,109 @@ async function recordPayablePayment(event) {
   cards[cards.findIndex((entry) => String(entry.id) === String(id))] = next;
   closePayablePayment();
   renderPayables();
+  renderMomoToday();
+  document.dispatchEvent(new CustomEvent("momo-data-changed"));
   renderPayableDetail(id);
   showToast(nextBalance <= 0 ? "All paid! 🌸" : "Payment recorded ✨");
+}
+
+async function markPayablePaidForCurrentMonth(id) {
+  const item = cards.find((entry) => String(entry.id) === String(id));
+  if (!item || getPayableBalance(item) <= 0) return;
+
+  const monthKey = getCurrentMonthKey();
+  if (getPayableCycleCheckPayment(item, monthKey)) return;
+  if (!isPayableWaitingThisMonth(item)) {
+    showToast("That payable is not due this month yet.");
+    return;
+  }
+
+  const amount = getPayableNextPaymentAmount(item);
+  if (!(amount > 0)) {
+    showToast("Add a monthly payment amount first.");
+    return;
+  }
+
+  const paymentDate = getTodayString();
+  const previousDueDate = item.dueDate || "";
+  const dueAnchor = previousDueDate || paymentDate;
+  const nextBalance = Math.max(
+    0,
+    Math.round((getPayableBalance(item) - amount + Number.EPSILON) * 100) / 100
+  );
+  const nextDueDate = nextBalance > 0
+    ? nextPayableDueDate(
+        dueAnchor,
+        item.frequency || "monthly",
+        item.dueDayOfMonth || getPayableDueDay(dueAnchor)
+      )
+    : "";
+
+  const payment = {
+    id: generateId("payment"),
+    amount,
+    date: paymentDate,
+    note: `Paid for ${getPayableMonthLabel(monthKey)}`,
+    source: "month-check",
+    paidMonth: monthKey,
+    previousDueDate,
+    nextDueDate
+  };
+
+  const next = {
+    ...item,
+    balance: nextBalance,
+    payments: [...getPayablePayments(item), payment],
+    installmentsPaid:
+      item.type === "installment" && Number(item.installmentCount || 0)
+        ? Math.min(Number(item.installmentCount), Number(item.installmentsPaid || 0) + 1)
+        : Number(item.installmentsPaid || 0),
+    dueDate: nextDueDate,
+    updatedAt: new Date().toISOString()
+  };
+
+  await putRecord(STORES.cards, next);
+  cards[cards.findIndex((entry) => String(entry.id) === String(id))] = next;
+  renderPayables();
+  renderMomoToday();
+  document.dispatchEvent(new CustomEvent("momo-data-changed"));
+  showToast(`${item.name || "Payable"} is paid for ${getPayableMonthLabel(monthKey)} ✓`);
+}
+
+async function undoPayablePaidForCurrentMonth(id) {
+  const item = cards.find((entry) => String(entry.id) === String(id));
+  if (!item) return;
+
+  const monthKey = getCurrentMonthKey();
+  const payment = getPayableCycleCheckPayment(item, monthKey);
+  if (!payment) return;
+
+  const restoredBalance = Math.max(
+    0,
+    Math.round((getPayableBalance(item) + Number(payment.amount || 0) + Number.EPSILON) * 100) / 100
+  );
+  const restoredDueDate = String(item.dueDate || "") === String(payment.nextDueDate || "")
+    ? String(payment.previousDueDate || "")
+    : item.dueDate;
+
+  const next = {
+    ...item,
+    balance: restoredBalance,
+    payments: getPayablePayments(item).filter((entry) => String(entry.id) !== String(payment.id)),
+    installmentsPaid:
+      item.type === "installment"
+        ? Math.max(0, Number(item.installmentsPaid || 0) - 1)
+        : Number(item.installmentsPaid || 0),
+    dueDate: restoredDueDate,
+    updatedAt: new Date().toISOString()
+  };
+
+  await putRecord(STORES.cards, next);
+  cards[cards.findIndex((entry) => String(entry.id) === String(id))] = next;
+  renderPayables();
+  renderMomoToday();
+  document.dispatchEvent(new CustomEvent("momo-data-changed"));
+  showToast(`${item.name || "Payable"} is back on this month’s list.`);
 }
 
 async function deletePayable(id) {
@@ -38237,6 +38423,24 @@ async function deletePayable(id) {
   renderPayables();
   showToast("Payable removed.");
 }
+
+document.addEventListener("change", async (event) => {
+  const toggle = event.target.closest("[data-payable-month-toggle]");
+  if (!toggle) return;
+
+  const id = toggle.dataset.payableMonthToggle;
+  toggle.disabled = true;
+  try {
+    if (toggle.checked) await markPayablePaidForCurrentMonth(id);
+    else await undoPayablePaidForCurrentMonth(id);
+  } catch (error) {
+    console.error("Could not update monthly payable status:", error);
+    toggle.checked = !toggle.checked;
+    showToast("Could not update this payable. Try again.");
+  } finally {
+    toggle.disabled = false;
+  }
+});
 
 document.addEventListener("click", (event) => {
   const add = event.target.closest("#addPayableButton, [data-payable-add]");
@@ -41412,7 +41616,7 @@ document.addEventListener("click", (event) => {
 const MOMO_HOME_LAYOUT_KEY = "momo_home_layout_v1";
 const MOMO_HOME_DEFAULT_ORDER = ["snapshot", "today", "reminders", "adventure", "lately"];
 const MOMO_HOME_LABELS = { snapshot: ["Money Snapshot", "Your month at a glance"], today: ["Momo Today", "Safe to Spend and what is due"], reminders: ["Gentle Nudges", "Upcoming reminders"], adventure: ["Next Adventure", "Trip snapshot"], lately: ["Recent Spending", "Your latest entries"] };
-let momoHomeLayout = { order: [...MOMO_HOME_DEFAULT_ORDER], hidden: [], density: "cozy", showPayablesOnHome: false };
+let momoHomeLayout = { order: [...MOMO_HOME_DEFAULT_ORDER], hidden: [], density: "cozy", showPayablesOnHome: true };
 let momoSearchTimer = null;
 let momoSearchRunId = 0;
 
@@ -41420,7 +41624,7 @@ function loadMomo19Settings(records) {
   const setting = records.find((item) => item?.key === MOMO_HOME_LAYOUT_KEY)?.value;
   if (setting && typeof setting === "object") {
     const order = Array.isArray(setting.order) ? setting.order.filter((id) => MOMO_HOME_DEFAULT_ORDER.includes(id)) : [];
-    momoHomeLayout = { order: [...order, ...MOMO_HOME_DEFAULT_ORDER.filter((id) => !order.includes(id))], hidden: Array.isArray(setting.hidden) ? setting.hidden.filter((id) => MOMO_HOME_DEFAULT_ORDER.includes(id)) : [], density: setting.density === "compact" ? "compact" : "cozy", showPayablesOnHome: setting.showPayablesOnHome === true };
+    momoHomeLayout = { order: [...order, ...MOMO_HOME_DEFAULT_ORDER.filter((id) => !order.includes(id))], hidden: Array.isArray(setting.hidden) ? setting.hidden.filter((id) => MOMO_HOME_DEFAULT_ORDER.includes(id)) : [], density: setting.density === "compact" ? "compact" : "cozy", showPayablesOnHome: setting.showPayablesOnHome !== false };
   }
 }
 
