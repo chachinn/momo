@@ -62,24 +62,26 @@ const allButton = page.locator('[data-payables-view="all"]');
 await dueButton.waitFor({ state: 'visible' });
 
 if ((await dueButton.getAttribute('aria-selected')) !== 'true') throw new Error('Due view should be default');
-let text = await page.locator('#payablesList').innerText();
+let text = await page.locator('#payablesList').textContent();
 if (!text.includes('BPI')) throw new Error(`September BPI payable should appear in Due. Text: ${text}`);
 if (text.includes('Future Loan')) throw new Error(`Future payable should not appear in Due. Text: ${text}`);
 
 await allButton.click();
 await page.waitForTimeout(100);
 if ((await allButton.getAttribute('aria-selected')) !== 'true') throw new Error('All Payables tab did not activate');
-text = await page.locator('#payablesList').innerText();
-console.log('ALL PAYABLES TEXT:', JSON.stringify(text));
+text = await page.locator('#payablesList').textContent();
 if (!text.includes('BPI') || !text.includes('Future Loan')) throw new Error(`All Payables should show both current and future payables. Text: ${text}`);
 if (!text.includes('₱3,730.46')) throw new Error(`All Payables should emphasize the monthly payment amount. Text: ${text}`);
 
 await dueButton.click();
+if ((await dueButton.getAttribute('aria-selected')) !== 'true') throw new Error('Could not return to Due before editing');
 await page.evaluate(() => openPayableEditor('bpi-monthly'));
 await page.locator('#payableDueDate').fill('2026-10-06');
 await page.locator('#payableForm').evaluate((form) => form.requestSubmit());
+await page.waitForFunction(() => document.getElementById('payableModal')?.hidden === true);
 await page.waitForFunction(() => document.querySelector('[data-payables-view="all"]')?.getAttribute('aria-selected') === 'true');
-text = await page.locator('#payablesList').innerText();
+await page.waitForTimeout(100);
+text = await page.locator('#payablesList').textContent();
 if (!text.includes('BPI')) throw new Error(`Edited payable should remain visible by switching to All Payables. Text: ${text}`);
 if (!text.includes('Oct')) throw new Error(`Edited future due date should be visible in All Payables. Text: ${text}`);
 
@@ -101,10 +103,10 @@ const savedDue = await page.evaluate(async () => {
 if (savedDue !== '2026-10-06') throw new Error(`Expected saved due date 2026-10-06, got ${savedDue}`);
 
 await dueButton.click();
-text = await page.locator('#payablesList').innerText();
+text = await page.locator('#payablesList').textContent();
 if (text.includes('BPI')) throw new Error(`BPI should leave Due after its due date moves to October. Text: ${text}`);
 await allButton.click();
-text = await page.locator('#payablesList').innerText();
+text = await page.locator('#payablesList').textContent();
 if (!text.includes('BPI')) throw new Error(`BPI must remain visible in All Payables. Text: ${text}`);
 
 const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth);
