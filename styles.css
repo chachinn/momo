@@ -16718,6 +16718,8 @@ body.momo-update-modal-open {
 
 .momo-today-payables-heading strong { display: block; margin-top: 2px; }
 .momo-today-payables { display: grid; gap: 8px; margin-top: 10px; }
+.momo-today-payables-heading[hidden],
+.momo-today-payables[hidden] { display: none !important; }
 
 .momo-today-payable {
   width: 100%;
