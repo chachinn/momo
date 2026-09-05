@@ -43,12 +43,8 @@ await page.evaluate(async () => {
 await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate(() => {
   const overlays = [
-    '#welcomeTour',
-    '#tutorialTip',
-    '.tutorial-overlay',
-    '.tutorial-backdrop',
-    '.tutorial-tip-backdrop',
-    '.help-topic-backdrop'
+    '#welcomeTour', '#tutorialTip', '.tutorial-overlay', '.tutorial-backdrop',
+    '.tutorial-tip-backdrop', '.help-topic-backdrop'
   ];
   overlays.forEach((selector) => {
     document.querySelectorAll(selector).forEach((el) => {
@@ -67,14 +63,16 @@ await dueButton.waitFor({ state: 'visible' });
 
 if ((await dueButton.getAttribute('aria-selected')) !== 'true') throw new Error('Due view should be default');
 let text = await page.locator('#payablesList').innerText();
-if (!text.includes('BPI')) throw new Error('September BPI payable should appear in Due');
-if (text.includes('Future Loan')) throw new Error('Future payable should not appear in Due');
+if (!text.includes('BPI')) throw new Error(`September BPI payable should appear in Due. Text: ${text}`);
+if (text.includes('Future Loan')) throw new Error(`Future payable should not appear in Due. Text: ${text}`);
 
 await allButton.click();
+await page.waitForTimeout(100);
 if ((await allButton.getAttribute('aria-selected')) !== 'true') throw new Error('All Payables tab did not activate');
 text = await page.locator('#payablesList').innerText();
-if (!text.includes('BPI') || !text.includes('Future Loan')) throw new Error('All Payables should show both current and future payables');
-if (!text.includes('₱3,730.46')) throw new Error('All Payables should emphasize the monthly payment amount');
+console.log('ALL PAYABLES TEXT:', JSON.stringify(text));
+if (!text.includes('BPI') || !text.includes('Future Loan')) throw new Error(`All Payables should show both current and future payables. Text: ${text}`);
+if (!text.includes('₱3,730.46')) throw new Error(`All Payables should emphasize the monthly payment amount. Text: ${text}`);
 
 await dueButton.click();
 await page.evaluate(() => openPayableEditor('bpi-monthly'));
@@ -82,8 +80,8 @@ await page.locator('#payableDueDate').fill('2026-10-06');
 await page.locator('#payableForm').evaluate((form) => form.requestSubmit());
 await page.waitForFunction(() => document.querySelector('[data-payables-view="all"]')?.getAttribute('aria-selected') === 'true');
 text = await page.locator('#payablesList').innerText();
-if (!text.includes('BPI')) throw new Error('Edited payable should remain visible by switching to All Payables');
-if (!text.includes('Oct')) throw new Error('Edited future due date should be visible in All Payables');
+if (!text.includes('BPI')) throw new Error(`Edited payable should remain visible by switching to All Payables. Text: ${text}`);
+if (!text.includes('Oct')) throw new Error(`Edited future due date should be visible in All Payables. Text: ${text}`);
 
 const savedDue = await page.evaluate(async () => {
   const db = await new Promise((resolve, reject) => {
@@ -104,10 +102,10 @@ if (savedDue !== '2026-10-06') throw new Error(`Expected saved due date 2026-10-
 
 await dueButton.click();
 text = await page.locator('#payablesList').innerText();
-if (text.includes('BPI')) throw new Error('BPI should leave Due after its due date moves to October');
+if (text.includes('BPI')) throw new Error(`BPI should leave Due after its due date moves to October. Text: ${text}`);
 await allButton.click();
 text = await page.locator('#payablesList').innerText();
-if (!text.includes('BPI')) throw new Error('BPI must remain visible in All Payables');
+if (!text.includes('BPI')) throw new Error(`BPI must remain visible in All Payables. Text: ${text}`);
 
 const overflow = await page.evaluate(() => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - window.innerWidth);
 if (overflow > 1) throw new Error(`Horizontal overflow detected: ${overflow}px`);
