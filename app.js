@@ -37661,14 +37661,43 @@ function payablePHPValue(payable, amount) {
   return convertCurrency(Number(amount || 0), payable?.currency || "PHP", "PHP");
 }
 
-function nextPayableDueDate(currentDate, frequency) {
+function getPayableDueDay(dateString) {
+  const date = createLocalDate(dateString);
+  return date ? date.getDate() : 0;
+}
+
+function nextPayableDueDate(currentDate, frequency, dueDayOfMonth = 0) {
   const base = createLocalDate(currentDate) || new Date();
+
+  if (frequency === "one-time" || frequency === "custom") {
+    return "";
+  }
+
   const next = new Date(base);
-  if (frequency === "weekly") next.setDate(next.getDate() + 7);
-  else if (frequency === "biweekly") next.setDate(next.getDate() + 14);
-  else if (frequency === "quarterly") next.setMonth(next.getMonth() + 3);
-  else if (frequency === "one-time" || frequency === "custom") return "";
-  else next.setMonth(next.getMonth() + 1);
+
+  if (frequency === "weekly") {
+    next.setDate(next.getDate() + 7);
+  } else if (frequency === "biweekly") {
+    next.setDate(next.getDate() + 14);
+  } else {
+    const monthsToAdd = frequency === "quarterly" ? 3 : 1;
+    const anchorDay = Math.max(
+      1,
+      Math.min(31, Number(dueDayOfMonth) || base.getDate())
+    );
+
+    next.setDate(1);
+    next.setMonth(next.getMonth() + monthsToAdd);
+
+    const lastDayOfTargetMonth = new Date(
+      next.getFullYear(),
+      next.getMonth() + 1,
+      0
+    ).getDate();
+
+    next.setDate(Math.min(anchorDay, lastDayOfTargetMonth));
+  }
+
   return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}-${String(next.getDate()).padStart(2, "0")}`;
 }
 
@@ -37850,6 +37879,19 @@ function updatePayableSpecialFields() {
   if (custom) custom.hidden = type !== "custom";
 }
 
+function normalizePayableEditorAmount(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "";
+  }
+
+  return Math.round((number + Number.EPSILON) * 100) / 100;
+}
+
 function openPayableEditor(id = "") {
   const modal = document.getElementById("payableModal");
   const form = document.getElementById("payableForm");
@@ -37863,20 +37905,20 @@ function openPayableEditor(id = "") {
   document.getElementById("payableCustomType").value = item?.customType || (item?.type === "other" ? "Other" : "");
   document.getElementById("payableName").value = item?.name || "";
   document.getElementById("payableProvider").value = item?.provider || "";
-  document.getElementById("payableOriginalAmount").value = item?.originalAmount ?? "";
-  document.getElementById("payableBalance").value = item?.balance ?? "";
+  document.getElementById("payableOriginalAmount").value = normalizePayableEditorAmount(item?.originalAmount);
+  document.getElementById("payableBalance").value = normalizePayableEditorAmount(item?.balance);
   document.getElementById("payableCurrency").value = item?.currency || "PHP";
   document.getElementById("payableDueDate").value = item?.dueDate || "";
-  document.getElementById("payableRegularPayment").value = item?.regularPayment ?? "";
+  document.getElementById("payableRegularPayment").value = normalizePayableEditorAmount(item?.regularPayment);
   document.getElementById("payableFrequency").value = item?.frequency || "monthly";
-  document.getElementById("payableCreditLimit").value = item?.creditLimit ?? "";
-  document.getElementById("payableStatementBalance").value = item?.statementBalance ?? "";
-  document.getElementById("payableMinimumDue").value = item?.minimumDue ?? "";
+  document.getElementById("payableCreditLimit").value = normalizePayableEditorAmount(item?.creditLimit);
+  document.getElementById("payableStatementBalance").value = normalizePayableEditorAmount(item?.statementBalance);
+  document.getElementById("payableMinimumDue").value = normalizePayableEditorAmount(item?.minimumDue);
   const payableInterestAPR = document.getElementById("payableInterestAPR");
-  if (payableInterestAPR) payableInterestAPR.value = item?.interestAPR ?? "";
-  document.getElementById("payableStatementDay").value = item?.statementDay ?? "";
-  document.getElementById("payableInstallmentCount").value = item?.installmentCount ?? "";
-  document.getElementById("payableInstallmentsPaid").value = item?.installmentsPaid ?? "";
+  if (payableInterestAPR) payableInterestAPR.value = normalizePayableEditorAmount(item?.interestAPR);
+  document.getElementById("payableStatementDay").value = Number(item?.statementDay || 0) >= 1 ? Math.min(31, Math.floor(Number(item.statementDay))) : "";
+  document.getElementById("payableInstallmentCount").value = Number(item?.installmentCount || 0) >= 1 ? Math.floor(Number(item.installmentCount)) : "";
+  document.getElementById("payableInstallmentsPaid").value = Number.isFinite(Number(item?.installmentsPaid)) ? Math.max(0, Math.floor(Number(item.installmentsPaid))) : "";
   document.getElementById("payableNotes").value = item?.notes || "";
   updatePayableSpecialFields();
   modal.hidden = false;
@@ -37963,6 +38005,12 @@ async function savePayable(event) {
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
+
+  record.dueDayOfMonth =
+    (record.frequency === "monthly" || record.frequency === "quarterly") && record.dueDate
+      ? getPayableDueDay(record.dueDate)
+      : 0;
+
   if (!record.name) {
     showToast("Give this payable a name.");
     document.getElementById("payableName")?.focus();
@@ -37999,13 +38047,18 @@ async function savePayable(event) {
       : 0;
   }
 
-  await putRecord(STORES.cards, record);
-  const index = cards.findIndex((item) => String(item.id) === String(id));
-  if (index >= 0) cards[index] = record;
-  else cards.push(record);
-  closePayableEditor();
-  renderPayables();
-  showToast(existing ? "Payable updated 🌸" : "Payable added ✿");
+  try {
+    await putRecord(STORES.cards, record);
+    const index = cards.findIndex((item) => String(item.id) === String(id));
+    if (index >= 0) cards[index] = record;
+    else cards.push(record);
+    closePayableEditor();
+    renderPayables();
+    showToast(existing ? "Payable updated 🌸" : "Payable added ✿");
+  } catch (error) {
+    console.error("Could not save payable:", error);
+    showToast("Could not save this payable. Try again.");
+  }
 }
 
 function renderPayableDetail(id) {
@@ -38118,13 +38171,22 @@ async function recordPayablePayment(event) {
     date: paymentDate,
     note: document.getElementById("payablePaymentNote").value.trim()
   };
-  const nextBalance = Math.max(0, getPayableBalance(item) - actualAmount);
+  const nextBalance = Math.max(
+    0,
+    Math.round((getPayableBalance(item) - actualAmount + Number.EPSILON) * 100) / 100
+  );
   const next = {
     ...item,
     balance: nextBalance,
     payments: [...getPayablePayments(item), payment],
     installmentsPaid: item.type === "installment" && Number(item.installmentCount || 0) ? Math.min(Number(item.installmentCount), Number(item.installmentsPaid || 0) + 1) : Number(item.installmentsPaid || 0),
-    dueDate: nextBalance > 0 ? nextPayableDueDate(item.dueDate || payment.date, item.frequency || "monthly") : "",
+    dueDate: nextBalance > 0
+      ? nextPayableDueDate(
+          item.dueDate || payment.date,
+          item.frequency || "monthly",
+          item.dueDayOfMonth || getPayableDueDay(item.dueDate || payment.date)
+        )
+      : "",
     updatedAt: new Date().toISOString()
   };
   await putRecord(STORES.cards, next);
