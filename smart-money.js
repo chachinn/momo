@@ -133,6 +133,11 @@
     return value && typeof value === "object" ? value : {};
   }
 
+  function payablesVisibleOnHome(snapshot) {
+    const layout = snapshot.settingMap.get("momo_home_layout_v1");
+    return Boolean(layout && layout.showPayablesOnHome === true);
+  }
+
   function monthlyExpenses(snapshot, now) {
     return snapshot.expenses.filter((expense) => {
       const date = expenseDate(expense);
@@ -183,13 +188,15 @@
       });
     });
 
-    snapshot.cards.forEach((item) => {
-      const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
-      if (!due || due < startOfDay(now) || due > end) return;
-      const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
-      if (amount <= 0) return;
-      items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
-    });
+    if (payablesVisibleOnHome(snapshot)) {
+      snapshot.cards.forEach((item) => {
+        const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
+        if (!due || due < startOfDay(now) || due > end) return;
+        const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
+        if (amount <= 0) return;
+        items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
+      });
+    }
 
     snapshot.planned.forEach((item) => {
       const due = parseDate(item?.targetDate || item?.date);

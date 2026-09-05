@@ -21071,18 +21071,9 @@ function clampMoney(value) {
 
 
 function getPayableScheduledAmountPHP(payable) {
-  const balance = getPayableBalance(payable);
-
-  if (balance <= 0) return 0;
-
-  const scheduled =
-    Number(payable.regularPayment || 0) ||
-    Number(payable.minimumDue || 0) ||
-    balance;
-
   return payablePHPValue(
     payable,
-    Math.min(balance, Math.max(0, scheduled))
+    getPayableNextPaymentAmount(payable)
   );
 }
 
@@ -21142,7 +21133,8 @@ function getRecurringOccurrencesBetween(
 
 function buildScheduledCashFlow(
   startDate,
-  endDate
+  endDate,
+  { includePayables = true } = {}
 ) {
   const byDate = new Map();
   let totalPHP = 0;
@@ -21210,30 +21202,29 @@ function buildScheduledCashFlow(
     });
   }
 
-  for (const payable of cards) {
-    if (
-      getPayableBalance(payable) <= 0 ||
-      !payable.dueDate ||
-      payable.dueDate < startDate ||
-      payable.dueDate > endDate
-    ) {
-      continue;
+  if (includePayables) {
+    for (const payable of cards) {
+      if (
+        getPayableBalance(payable) <= 0 ||
+        !payable.dueDate ||
+        payable.dueDate < startDate ||
+        payable.dueDate > endDate
+      ) {
+        continue;
+      }
+
+      const amountPHP = getPayableScheduledAmountPHP(payable);
+
+      addItem(payable.dueDate, {
+        type: "payable",
+        icon: "♡",
+        title: payable.name || "Payable",
+        amountPHP,
+        amountKnown: amountPHP > 0,
+        originalAmount: getPayableNextPaymentAmount(payable),
+        currency: payable.currency || "PHP"
+      });
     }
-
-    const amountPHP = getPayableScheduledAmountPHP(payable);
-
-    addItem(payable.dueDate, {
-      type: "payable",
-      icon: "♡",
-      title: payable.name || "Payable",
-      amountPHP,
-      amountKnown: amountPHP > 0,
-      originalAmount:
-        Number(payable.regularPayment || 0) ||
-        Number(payable.minimumDue || 0) ||
-        getPayableBalance(payable),
-      currency: payable.currency || "PHP"
-    });
   }
 
   return { byDate, totalPHP };
@@ -21276,7 +21267,7 @@ function getProtectedSavingsRemainingPHP(
 }
 
 
-function getMomoTodaySnapshot() {
+function getMomoTodaySnapshot({ includePayables = true } = {}) {
   const today = getTodayString();
   const now = createLocalDate(today) || new Date();
   const monthKey = getCurrentMonthKey();
@@ -21291,8 +21282,8 @@ function getMomoTodaySnapshot() {
   const spent = getMonthlySpent();
   const saved = getCurrentMonthSavingsPHP();
   const protectedSavingsRemaining = getProtectedSavingsRemainingPHP(monthKey);
-  const monthSchedule = buildScheduledCashFlow(today, monthEnd);
-  const sevenDaySchedule = buildScheduledCashFlow(today, sevenDayEnd);
+  const monthSchedule = buildScheduledCashFlow(today, monthEnd, { includePayables });
+  const sevenDaySchedule = buildScheduledCashFlow(today, sevenDayEnd, { includePayables });
   const cushion = baseAmount > 0
     ? baseAmount - spent - saved - protectedSavingsRemaining - monthSchedule.totalPHP
     : null;
@@ -21340,7 +21331,8 @@ function renderMomoToday() {
   const section = document.getElementById("momoTodaySection");
   if (!section) return;
 
-  const snapshot = getMomoTodaySnapshot();
+  const showPayablesOnHome = momoHomeLayout.showPayablesOnHome === true;
+  const snapshot = getMomoTodaySnapshot({ includePayables: showPayablesOnHome });
   const setText = (id, value) => {
     const element = document.getElementById(id);
     if (element) element.textContent = value;
@@ -21387,7 +21379,7 @@ function renderMomoToday() {
               <strong>${escapeHTML(item.name || "Payable")}</strong>
               <small>${item.dueDate ? `Due ${formatShortDate(item.dueDate)}` : "No due date"}</small>
             </div>
-            <b>${formatCurrency(getPayableBalance(item), item.currency || "PHP")}</b>
+            <b>${formatCurrency(getPayableNextPaymentAmount(item), item.currency || "PHP")}</b>
           </button>
         `).join("")
       : `<div class="momo-today-empty">No active payables waiting on you 🌸</div>`;
@@ -37657,6 +37649,31 @@ function getPayableBalance(payable) {
   return Math.max(0, Number(payable?.balance || 0));
 }
 
+function getPayableNextPaymentAmount(payable) {
+  const balance = getPayableBalance(payable);
+  if (balance <= 0) return 0;
+
+  const scheduled =
+    Number(payable?.regularPayment || 0) ||
+    Number(payable?.minimumDue || 0);
+
+  return Math.min(
+    balance,
+    scheduled > 0 ? scheduled : balance
+  );
+}
+
+function getPayablePaymentLabel(payable) {
+  switch (payable?.frequency) {
+    case "monthly": return "Monthly payment";
+    case "quarterly": return "Quarterly payment";
+    case "weekly": return "Weekly payment";
+    case "biweekly": return "Every 2 weeks";
+    case "one-time": return "One-time payment";
+    default: return "Next payment";
+  }
+}
+
 function payablePHPValue(payable, amount) {
   return convertCurrency(Number(amount || 0), payable?.currency || "PHP", "PHP");
 }
@@ -37759,7 +37776,10 @@ function renderPayables() {
   if (!list || !empty) return;
 
   const active = cards.filter((item) => getPayableBalance(item) > 0);
-  const total = active.reduce((sum, item) => sum + payablePHPValue(item, getPayableBalance(item)), 0);
+  const nextPaymentsTotal = active.reduce(
+    (sum, item) => sum + payablePHPValue(item, getPayableNextPaymentAmount(item)),
+    0
+  );
   const today = createLocalDate(getTodayString());
   const soonLimit = new Date(today);
   soonLimit.setDate(soonLimit.getDate() + 30);
@@ -37786,7 +37806,7 @@ function renderPayables() {
   const paidEl = document.getElementById("payablesPaidMonth");
   const activeCountEl = document.getElementById("payablesActiveCount");
 
-  if (totalEl) totalEl.textContent = formatPHP(total);
+  if (totalEl) totalEl.textContent = formatPHP(nextPaymentsTotal);
   if (dueEl) dueEl.textContent = formatPHP(dueSoon);
   if (paidEl) paidEl.textContent = formatPHP(paidMonth);
   if (activeCountEl) activeCountEl.textContent = `${active.length} active`;
@@ -37812,6 +37832,7 @@ function renderPayables() {
   list.innerHTML = visiblePayables.map((item) => {
     const meta = getPayableMeta(item);
     const balance = getPayableBalance(item);
+    const nextPayment = getPayableNextPaymentAmount(item);
     const original = Number(item.originalAmount || 0);
     const paidPercent = original > 0 ? Math.min(100, Math.max(0, ((original - balance) / original) * 100)) : 0;
     const done = balance <= 0;
@@ -37825,12 +37846,12 @@ function renderPayables() {
               <strong>${escapeHTML(item.name || meta.label)}</strong>
               <small>${escapeHTML(item.provider || meta.label)}</small>
             </span>
-            <b>${formatCurrency(balance, item.currency || "PHP")}</b>
+            <b>${formatCurrency(nextPayment, item.currency || "PHP")}</b>
           </span>
           <span class="payable-progress"><i style="width:${paidPercent}%"></i></span>
           <span class="payable-item-foot">
             <small class="${tone}">${dueCopy}</small>
-            <em>${done ? "finished" : "still to pay"}</em>
+            <em>${done ? "finished" : escapeHTML(getPayablePaymentLabel(item))}</em>
           </span>
         </span>
       </button>`;
@@ -38070,6 +38091,7 @@ function renderPayableDetail(id) {
   if (!modal || !body) return;
   const meta = getPayableMeta(item);
   const balance = getPayableBalance(item);
+  const nextPayment = getPayableNextPaymentAmount(item);
   const payments = [...getPayablePayments(item)].sort((a, b) => String(b.date).localeCompare(String(a.date)));
   const available = item.type === "credit-card" && Number(item.creditLimit || 0) > 0 ? Math.max(0, Number(item.creditLimit) - balance) : null;
   const totalPaid = getPayableTotalPaid(item);
@@ -38078,11 +38100,12 @@ function renderPayableDetail(id) {
   document.getElementById("payableDetailTitle").textContent = item.name || meta.label;
   body.innerHTML = `
     <section class="payable-detail-hero ${balance <= 0 ? "is-paid" : ""}">
-      <small>${balance <= 0 ? "All paid! 🌸" : "Still to pay"}</small>
-      <strong>${formatCurrency(balance, item.currency || "PHP")}</strong>
+      <small>${balance <= 0 ? "All paid! 🌸" : escapeHTML(getPayablePaymentLabel(item))}</small>
+      <strong>${formatCurrency(nextPayment, item.currency || "PHP")}</strong>
       <p>${escapeHTML(item.provider || "")}</p>
     </section>
     <div class="payable-detail-grid">
+      ${balance > 0 ? `<div><small>Remaining balance</small><strong>${formatCurrency(balance, item.currency || "PHP")}</strong></div>` : ""}
       ${item.dueDate ? `<div><small>Next payment</small><strong>${formatDate(item.dueDate)}</strong></div>` : ""}
       ${Number(item.regularPayment || 0) ? `<div><small>Regular payment</small><strong>${formatCurrency(item.regularPayment, item.currency || "PHP")}</strong></div>` : ""}
       ${available !== null ? `<div><small>Available credit</small><strong>${formatCurrency(available, item.currency || "PHP")}</strong></div>` : ""}
