@@ -2353,10 +2353,15 @@
           </article>
         </div>
 
+        <div class="payables-view-switch" role="tablist" aria-label="Payables view">
+          <button class="active" type="button" role="tab" data-payables-view="due" aria-selected="true">Due</button>
+          <button type="button" role="tab" data-payables-view="all" aria-selected="false">All Payables</button>
+        </div>
+
         <div class="payables-section-heading">
           <div>
-            <p class="section-kicker">Your little list</p>
-            <h2>What’s waiting</h2>
+            <p id="payablesListKicker" class="section-kicker">Your little list</p>
+            <h2 id="payablesListTitle">What’s waiting</h2>
           </div>
           <span id="payablesActiveCount" class="momo-soft-pill">0 left</span>
         </div>
