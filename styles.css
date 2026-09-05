@@ -17751,3 +17751,147 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
     grid-template-columns: 1fr;
   }
 }
+
+
+/* MOMO — MONTHLY PAYABLE CHECKOFF */
+.payable-cycle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 58px;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.payable-cycle-row + .payable-cycle-row {
+  margin-top: 8px;
+}
+
+.payable-cycle-row .payable-item,
+.payable-paid-cycle-card {
+  width: 100%;
+  min-width: 0;
+}
+
+.payable-month-check {
+  min-height: 64px;
+  padding: 7px 4px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 4px;
+  background: color-mix(in srgb, var(--surface) 90%, var(--blush));
+  color: var(--text-soft);
+  cursor: pointer;
+}
+
+.payable-month-check input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.payable-month-check > span {
+  width: 27px;
+  height: 27px;
+  border: 1px solid color-mix(in srgb, var(--rose) 28%, var(--border));
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: transparent;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.payable-month-check > em {
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.payable-month-check:has(input:checked),
+.payable-month-check.is-checked {
+  border-color: color-mix(in srgb, var(--pink) 70%, var(--border));
+  background: color-mix(in srgb, var(--blush) 76%, var(--surface));
+  color: var(--rose);
+}
+
+.payable-month-check:has(input:checked) > span,
+.payable-month-check.is-checked > span {
+  background: var(--pink);
+  color: white;
+  border-color: var(--pink);
+}
+
+.payables-month-clear {
+  padding: 20px 16px;
+  border: 1px dashed color-mix(in srgb, var(--pink) 58%, var(--border));
+  border-radius: 22px;
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  text-align: center;
+  background: color-mix(in srgb, var(--surface) 86%, var(--blush));
+}
+
+.payables-month-clear > span { font-size: 24px; }
+.payables-month-clear > strong { font-size: 11px; }
+.payables-month-clear > small { color: var(--text-soft); font-size: 8px; line-height: 1.4; }
+
+.payables-cycle-done {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.payables-cycle-done-heading {
+  margin-bottom: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.payables-cycle-done-heading h3 {
+  margin: 2px 0 0;
+  font-family: Georgia, serif;
+  font-size: 15px;
+}
+
+.payables-cycle-done-heading > span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--blush);
+  color: var(--rose);
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.payable-paid-cycle-card {
+  min-height: 64px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  background: color-mix(in srgb, var(--surface) 88%, var(--blush));
+  color: var(--text);
+}
+
+.payable-paid-cycle-card strong,
+.payable-paid-cycle-card small { display: block; }
+.payable-paid-cycle-card strong { font-size: 10px; }
+.payable-paid-cycle-card small { margin-top: 3px; color: var(--text-soft); font-size: 8px; }
+.payable-paid-cycle-card b { color: var(--rose); font-size: 10px; white-space: nowrap; }
+
+@media (max-width: 350px) {
+  .payable-cycle-row { grid-template-columns: minmax(0, 1fr) 52px; gap: 6px; }
+  .payable-month-check { min-height: 60px; }
+  .payable-month-check > span { width: 24px; height: 24px; }
+}
