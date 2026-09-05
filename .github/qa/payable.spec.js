@@ -20,11 +20,7 @@ async function readCard(page, id) {
       const db = request.result;
       const tx = db.transaction('cards', 'readonly');
       const get = tx.objectStore('cards').get(cardId);
-      get.onsuccess = () => {
-        const value = get.result;
-        db.close();
-        resolve(value);
-      };
+      get.onsuccess = () => { const value = get.result; db.close(); resolve(value); };
       get.onerror = () => reject(get.error);
     };
   }), id);
@@ -49,33 +45,13 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
         const db = request.result;
         const tx = db.transaction('cards', 'readwrite');
         tx.objectStore('cards').put({
-          id: 'qa-card',
-          type: 'credit-card',
-          customType: '',
-          name: 'QA Rewards Card',
-          provider: 'QA Bank',
-          originalAmount: 14930.46,
-          balance: 11199.999999999998,
-          currency: 'PHP',
-          dueDate: '',
-          regularPayment: 3730.46,
-          frequency: 'monthly',
-          creditLimit: 0,
-          statementBalance: 0,
-          minimumDue: 0,
-          interestAPR: 0,
-          statementDay: 16,
-          installmentCount: 0,
-          installmentsPaid: 0,
-          notes: '',
-          payments: [],
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          id: 'qa-card', type: 'credit-card', customType: '', name: 'QA Rewards Card', provider: 'QA Bank',
+          originalAmount: 14930.46, balance: 11199.999999999998, currency: 'PHP', dueDate: '',
+          regularPayment: 3730.46, frequency: 'monthly', creditLimit: 0, statementBalance: 0,
+          minimumDue: 0, interestAPR: 0, statementDay: 16, installmentCount: 0, installmentsPaid: 0,
+          notes: '', payments: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
         });
-        tx.oncomplete = () => {
-          db.close();
-          resolve();
-        };
+        tx.oncomplete = () => { db.close(); resolve(); };
         tx.onerror = () => reject(tx.error);
       };
     });
@@ -89,7 +65,9 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
   await page.locator('#sideDrawer [data-drawer-nav="payables"]').click();
   await dismissTips(page);
 
-  const card = page.locator('[data-payable-open="qa-card"]');
+  const payablesScreen = page.locator('section.screen[data-screen="payables"]');
+  await expect(payablesScreen).toHaveClass(/active/, { timeout: 5000 });
+  const card = payablesScreen.locator('[data-payable-open="qa-card"]');
   await expect(card).toBeVisible({ timeout: 5000 });
   await card.click();
   await page.locator('[data-payable-edit="qa-card"]').click();
@@ -113,7 +91,7 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
   expect(saved.balance).toBe(11200);
   expect(saved.statementDay).toBe(16);
 
-  await page.locator('[data-payable-open="qa-card"]').click();
+  await payablesScreen.locator('[data-payable-open="qa-card"]').click();
   await page.locator('[data-payable-pay="qa-card"]').click();
   await page.locator('#payablePaymentAmount').fill('3730.46');
   await page.locator('#payablePaymentDate').fill('2026-10-06');
@@ -130,6 +108,5 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
     mar: nextPayableDueDate('2026-02-28', 'monthly', 31)
   }));
   expect(edgeDates).toEqual({ feb: '2026-02-28', mar: '2026-03-31' });
-
   expect(pageErrors).toEqual([]);
 });
