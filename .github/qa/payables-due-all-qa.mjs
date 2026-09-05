@@ -42,7 +42,21 @@ await page.evaluate(async () => {
 
 await page.reload({ waitUntil: 'networkidle' });
 await page.evaluate(() => {
-  document.querySelectorAll('.tutorial-backdrop,.tutorial-tip-backdrop,.help-topic-backdrop').forEach((el) => { el.hidden = true; });
+  const overlays = [
+    '#welcomeTour',
+    '#tutorialTip',
+    '.tutorial-overlay',
+    '.tutorial-backdrop',
+    '.tutorial-tip-backdrop',
+    '.help-topic-backdrop'
+  ];
+  overlays.forEach((selector) => {
+    document.querySelectorAll(selector).forEach((el) => {
+      el.hidden = true;
+      el.style.display = 'none';
+      el.style.pointerEvents = 'none';
+    });
+  });
   if (typeof showScreen === 'function') showScreen('payables');
   if (typeof renderPayables === 'function') renderPayables();
 });
