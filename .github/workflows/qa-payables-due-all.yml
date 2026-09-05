@@ -54,3 +54,5 @@ jobs:
             git commit -m "Add Due and All Payables views"
             git push origin HEAD:fix/payables-due-all-views
           fi
+
+# QA harness retry after dismissing the welcome tour overlay.
