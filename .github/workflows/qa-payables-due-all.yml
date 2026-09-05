@@ -18,7 +18,9 @@ jobs:
           ref: fix/payables-due-all-views
 
       - name: Apply patch
-        run: python3 .github/qa/patch-payables-due-all.py
+        run: |
+          sed -i 's/>0 active</>0 left</' .github/qa/patch-payables-due-all.py
+          python3 .github/qa/patch-payables-due-all.py
 
       - name: Focused syntax checks
         run: |
