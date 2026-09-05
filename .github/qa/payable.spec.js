@@ -34,6 +34,10 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
 
+  await page.addInitScript(() => {
+    localStorage.setItem('momo_welcome_tour_complete_v1', 'yes');
+  });
+
   await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(800);
 
