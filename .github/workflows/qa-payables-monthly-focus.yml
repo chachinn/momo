@@ -1,0 +1,465 @@
+name: Temporary payables monthly focus QA
+
+on:
+  push:
+    branches:
+      - fix/payables-monthly-focus
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-clean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/payables-monthly-focus
+          fetch-depth: 0
+
+      - name: Apply focused payable UX fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Missing expected snippet in {path}: {old[:140]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # app.js — reusable next-payment amount and clear payment cadence.
+          replace_once(
+              "app.js",
+              '''function getPayableBalance(payable) {
+            return Math.max(0, Number(payable?.balance || 0));
+          }
+
+          function payablePHPValue(payable, amount) {''',
+              '''function getPayableBalance(payable) {
+            return Math.max(0, Number(payable?.balance || 0));
+          }
+
+          function getPayableNextPaymentAmount(payable) {
+            const balance = getPayableBalance(payable);
+            if (balance <= 0) return 0;
+
+            const scheduled =
+              Number(payable?.regularPayment || 0) ||
+              Number(payable?.minimumDue || 0);
+
+            return Math.min(
+              balance,
+              scheduled > 0 ? scheduled : balance
+            );
+          }
+
+          function getPayablePaymentLabel(payable) {
+            switch (payable?.frequency) {
+              case "monthly": return "Monthly payment";
+              case "quarterly": return "Quarterly payment";
+              case "weekly": return "Weekly payment";
+              case "biweekly": return "Every 2 weeks";
+              case "one-time": return "One-time payment";
+              default: return "Next payment";
+            }
+          }
+
+          function payablePHPValue(payable, amount) {'''
+          )
+
+          replace_once(
+              "app.js",
+              '''function getPayableScheduledAmountPHP(payable) {
+            const balance = getPayableBalance(payable);
+
+            if (balance <= 0) return 0;
+
+            const scheduled =
+              Number(payable.regularPayment || 0) ||
+              Number(payable.minimumDue || 0) ||
+              balance;
+
+            return payablePHPValue(
+              payable,
+              Math.min(balance, Math.max(0, scheduled))
+            );
+          }''',
+              '''function getPayableScheduledAmountPHP(payable) {
+            return payablePHPValue(
+              payable,
+              getPayableNextPaymentAmount(payable)
+            );
+          }'''
+          )
+
+          # Home cash-flow should not expose payable amounts when Home privacy is off.
+          replace_once(
+              "app.js",
+              '''function buildScheduledCashFlow(
+            startDate,
+            endDate
+          ) {''',
+              '''function buildScheduledCashFlow(
+            startDate,
+            endDate,
+            { includePayables = true } = {}
+          ) {'''
+          )
+
+          old_payable_loop = '''  for (const payable of cards) {
+            if (
+              getPayableBalance(payable) <= 0 ||
+              !payable.dueDate ||
+              payable.dueDate < startDate ||
+              payable.dueDate > endDate
+            ) {
+              continue;
+            }
+
+            const amountPHP = getPayableScheduledAmountPHP(payable);
+
+            addItem(payable.dueDate, {
+              type: "payable",
+              icon: "♡",
+              title: payable.name || "Payable",
+              amountPHP,
+              amountKnown: amountPHP > 0,
+              originalAmount:
+                Number(payable.regularPayment || 0) ||
+                Number(payable.minimumDue || 0) ||
+                getPayableBalance(payable),
+              currency: payable.currency || "PHP"
+            });
+          }
+'''
+          new_payable_loop = '''  if (includePayables) {
+            for (const payable of cards) {
+              if (
+                getPayableBalance(payable) <= 0 ||
+                !payable.dueDate ||
+                payable.dueDate < startDate ||
+                payable.dueDate > endDate
+              ) {
+                continue;
+              }
+
+              const amountPHP = getPayableScheduledAmountPHP(payable);
+
+              addItem(payable.dueDate, {
+                type: "payable",
+                icon: "♡",
+                title: payable.name || "Payable",
+                amountPHP,
+                amountKnown: amountPHP > 0,
+                originalAmount: getPayableNextPaymentAmount(payable),
+                currency: payable.currency || "PHP"
+              });
+            }
+          }
+'''
+          replace_once("app.js", old_payable_loop, new_payable_loop)
+
+          replace_once(
+              "app.js",
+              '''function getMomoTodaySnapshot() {''',
+              '''function getMomoTodaySnapshot({ includePayables = true } = {}) {'''
+          )
+          replace_once(
+              "app.js",
+              '''  const monthSchedule = buildScheduledCashFlow(today, monthEnd);
+            const sevenDaySchedule = buildScheduledCashFlow(today, sevenDayEnd);''',
+              '''  const monthSchedule = buildScheduledCashFlow(today, monthEnd, { includePayables });
+            const sevenDaySchedule = buildScheduledCashFlow(today, sevenDayEnd, { includePayables });'''
+          )
+          replace_once(
+              "app.js",
+              '''  const snapshot = getMomoTodaySnapshot();''',
+              '''  const showPayablesOnHome = momoHomeLayout.showPayablesOnHome === true;
+            const snapshot = getMomoTodaySnapshot({ includePayables: showPayablesOnHome });'''
+          )
+          replace_once(
+              "app.js",
+              '''            <b>${formatCurrency(getPayableBalance(item), item.currency || "PHP")}</b>''',
+              '''            <b>${formatCurrency(getPayableNextPaymentAmount(item), item.currency || "PHP")}</b>'''
+          )
+
+          # Payables overview focuses on the next cycle amount, not full balances.
+          replace_once(
+              "app.js",
+              '''  const total = active.reduce((sum, item) => sum + payablePHPValue(item, getPayableBalance(item)), 0);''',
+              '''  const nextPaymentsTotal = active.reduce(
+            (sum, item) => sum + payablePHPValue(item, getPayableNextPaymentAmount(item)),
+            0
+          );'''
+          )
+          replace_once(
+              "app.js",
+              '''  if (totalEl) totalEl.textContent = formatPHP(total);''',
+              '''  if (totalEl) totalEl.textContent = formatPHP(nextPaymentsTotal);'''
+          )
+          replace_once(
+              "app.js",
+              '''    const balance = getPayableBalance(item);
+            const original = Number(item.originalAmount || 0);''',
+              '''    const balance = getPayableBalance(item);
+            const nextPayment = getPayableNextPaymentAmount(item);
+            const original = Number(item.originalAmount || 0);'''
+          )
+          replace_once(
+              "app.js",
+              '''            <b>${formatCurrency(balance, item.currency || "PHP")}</b>''',
+              '''            <b>${formatCurrency(nextPayment, item.currency || "PHP")}</b>'''
+          )
+          replace_once(
+              "app.js",
+              '''            <em>${done ? "finished" : "still to pay"}</em>''',
+              '''            <em>${done ? "finished" : escapeHTML(getPayablePaymentLabel(item))}</em>'''
+          )
+
+          # Payable detail makes the current payment prominent while keeping total balance secondary.
+          replace_once(
+              "app.js",
+              '''  const balance = getPayableBalance(item);
+            const payments = [...getPayablePayments(item)].sort((a, b) => String(b.date).localeCompare(String(a.date)));''',
+              '''  const balance = getPayableBalance(item);
+            const nextPayment = getPayableNextPaymentAmount(item);
+            const payments = [...getPayablePayments(item)].sort((a, b) => String(b.date).localeCompare(String(a.date)));'''
+          )
+          replace_once(
+              "app.js",
+              '''    <section class="payable-detail-hero ${balance <= 0 ? "is-paid" : ""}">
+                <small>${balance <= 0 ? "All paid! 🌸" : "Still to pay"}</small>
+                <strong>${formatCurrency(balance, item.currency || "PHP")}</strong>
+                <p>${escapeHTML(item.provider || "")}</p>
+              </section>
+              <div class="payable-detail-grid">
+                ${item.dueDate ? `<div><small>Next payment</small><strong>${formatDate(item.dueDate)}</strong></div>` : ""}''',
+              '''    <section class="payable-detail-hero ${balance <= 0 ? "is-paid" : ""}">
+                <small>${balance <= 0 ? "All paid! 🌸" : escapeHTML(getPayablePaymentLabel(item))}</small>
+                <strong>${formatCurrency(nextPayment, item.currency || "PHP")}</strong>
+                <p>${escapeHTML(item.provider || "")}</p>
+              </section>
+              <div class="payable-detail-grid">
+                ${balance > 0 ? `<div><small>Remaining balance</small><strong>${formatCurrency(balance, item.currency || "PHP")}</strong></div>` : ""}
+                ${item.dueDate ? `<div><small>Next payment</small><strong>${formatDate(item.dueDate)}</strong></div>` : ""}'''
+          )
+
+          # Smart Money Home should also respect the same privacy setting for upcoming commitments.
+          replace_once(
+              "smart-money.js",
+              '''  function paydayPlan(snapshot) {
+            const value = snapshot.settingMap.get("payday_plan_v1");
+            return value && typeof value === "object" ? value : {};
+          }
+''',
+              '''  function paydayPlan(snapshot) {
+            const value = snapshot.settingMap.get("payday_plan_v1");
+            return value && typeof value === "object" ? value : {};
+          }
+
+          function payablesVisibleOnHome(snapshot) {
+            const layout = snapshot.settingMap.get("momo_home_layout_v1");
+            return Boolean(layout && layout.showPayablesOnHome === true);
+          }
+'''
+          )
+          replace_once(
+              "smart-money.js",
+              '''    snapshot.cards.forEach((item) => {
+                const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
+                if (!due || due < startOfDay(now) || due > end) return;
+                const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
+                if (amount <= 0) return;
+                items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
+              });''',
+              '''    if (payablesVisibleOnHome(snapshot)) {
+              snapshot.cards.forEach((item) => {
+                const due = parseDate(item?.dueDate || item?.nextDueDate || item?.paymentDueDate);
+                if (!due || due < startOfDay(now) || due > end) return;
+                const amount = toPHP(item?.regularPayment || item?.minimumDue || item?.minimumPayment || item?.dueAmount || item?.paymentAmount || 0, item?.currency || "PHP");
+                if (amount <= 0) return;
+                items.push({ type: "Payable", name: text(item?.name || item?.title || "Payable"), amount, date: due });
+              });
+            }'''
+          )
+
+          # CSS: explicit flex/grid rules must not override the hidden attribute.
+          replace_once(
+              "styles.css",
+              '''.momo-today-payables-heading strong { display: block; margin-top: 2px; }
+          .momo-today-payables { display: grid; gap: 8px; margin-top: 10px; }
+''',
+              '''.momo-today-payables-heading strong { display: block; margin-top: 2px; }
+          .momo-today-payables { display: grid; gap: 8px; margin-top: 10px; }
+          .momo-today-payables-heading[hidden],
+          .momo-today-payables[hidden] { display: none !important; }
+'''
+          )
+
+          # Payables copy now describes the amount being shown.
+          replace_once(
+              "index.html",
+              '''            <p>Still to pay</p>
+                    <strong id="payablesTotal">₱0.00</strong>''',
+              '''            <p>Next payments</p>
+                    <strong id="payablesTotal">₱0.00</strong>'''
+          )
+          replace_once(
+              "index.html",
+              '''<span><strong>Show Payables on Home</strong><small>Show payable balances, payoff insights, and active payable cards on Home.</small></span>''',
+              '''<span><strong>Show Payables on Home</strong><small>Include payable amounts, payoff insights, and active payable cards on Home.</small></span>'''
+          )
+
+          replace_once(
+              "service-worker.js",
+              '''`momo-runtime-shell-v${APP_VERSION}-shared-trip-r4`''',
+              '''`momo-runtime-shell-v${APP_VERSION}-shared-trip-r5`'''
+          )
+          PY
+
+      - name: Syntax and focused source checks
+        shell: bash
+        run: |
+          node --check app.js
+          node --check smart-money.js
+          node --check service-worker.js
+          grep -F 'function getPayableNextPaymentAmount(payable)' app.js
+          grep -F 'getMomoTodaySnapshot({ includePayables: showPayablesOnHome })' app.js
+          grep -F 'Remaining balance' app.js
+          grep -F 'Next payments' index.html
+          grep -F '.momo-today-payables[hidden] { display: none !important; }' styles.css
+          grep -F 'shared-trip-r5' service-worker.js
+
+      - name: Install Playwright Chromium
+        shell: bash
+        run: |
+          npx -y playwright@1.55.0 install --with-deps chromium
+
+      - name: Mobile browser QA with real IndexedDB
+        shell: bash
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          cat >/tmp/momo-payables-qa.mjs <<'JS'
+          import { chromium } from 'playwright';
+          import assert from 'node:assert/strict';
+
+          const browser = await chromium.launch({ headless: true });
+          const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+          const page = await context.newPage();
+          const errors = [];
+          page.on('pageerror', error => errors.push(String(error)));
+
+          await page.goto('http://127.0.0.1:4173/', { waitUntil: 'networkidle' });
+          await page.waitForTimeout(800);
+
+          await page.evaluate(async () => {
+            const open = () => new Promise((resolve, reject) => {
+              const req = indexedDB.open('momo_database', 4);
+              req.onsuccess = () => resolve(req.result);
+              req.onerror = () => reject(req.error);
+            });
+            const db = await open();
+            const today = new Date();
+            const due = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 2);
+            const dueDate = `${due.getFullYear()}-${String(due.getMonth()+1).padStart(2,'0')}-${String(due.getDate()).padStart(2,'0')}`;
+            await new Promise((resolve, reject) => {
+              const tx = db.transaction(['cards','settings'], 'readwrite');
+              tx.objectStore('cards').clear();
+              tx.objectStore('cards').put({
+                id: 'qa-bpi', type: 'credit-card', name: 'BPI', provider: 'BPI',
+                originalAmount: 44774.93, balance: 41044.47, currency: 'PHP',
+                dueDate, dueDayOfMonth: due.getDate(), regularPayment: 3730.46,
+                frequency: 'monthly', minimumDue: 0, creditLimit: 0, statementBalance: 0,
+                payments: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+              });
+              tx.objectStore('settings').put({
+                key: 'momo_home_layout_v1',
+                value: { order: ['snapshot','today','reminders','adventure','lately'], hidden: [], density: 'cozy', showPayablesOnHome: false },
+                updatedAt: new Date().toISOString()
+              });
+              tx.oncomplete = resolve;
+              tx.onerror = () => reject(tx.error);
+            });
+            db.close();
+          });
+
+          await page.reload({ waitUntil: 'networkidle' });
+          await page.waitForTimeout(1200);
+
+          const hiddenStates = await page.locator('[data-home-payables]').evaluateAll(nodes => nodes.map(node => ({ hidden: node.hidden, display: getComputedStyle(node).display })));
+          assert.equal(hiddenStates.length, 2);
+          for (const state of hiddenStates) {
+            assert.equal(state.hidden, true);
+            assert.equal(state.display, 'none');
+          }
+
+          assert.equal((await page.locator('#momoDueNext7').innerText()).trim(), '₱0.00');
+          assert.equal((await page.locator('#momoProjectedFixed').innerText()).trim(), '₱0.00');
+          const knows = (await page.locator('#momoKnowsList').innerText()).replaceAll(',', '');
+          assert(!knows.includes('41044'));
+          assert(!knows.includes('3730'));
+          assert(!knows.includes('BPI'));
+
+          await page.evaluate(() => { showScreen('payables'); renderPayables(); });
+          await page.waitForTimeout(150);
+          const hero = (await page.locator('#payablesTotal').innerText()).replaceAll(',', '');
+          assert(hero.includes('3730.46'));
+          assert(!hero.includes('41044.47'));
+          const itemAmount = (await page.locator('.payable-item b').first().innerText()).replaceAll(',', '');
+          assert(itemAmount.includes('3730.46'));
+          assert(!itemAmount.includes('41044.47'));
+          assert((await page.locator('.payable-item em').first().innerText()).includes('Monthly payment'));
+
+          await page.locator('.payable-item').first().click();
+          await page.waitForTimeout(100);
+          const detailHero = (await page.locator('.payable-detail-hero strong').innerText()).replaceAll(',', '');
+          assert(detailHero.includes('3730.46'));
+          const detailText = (await page.locator('#payableDetailBody').innerText()).replaceAll(',', '');
+          assert(detailText.includes('Remaining balance'));
+          assert(detailText.includes('41044.47'));
+
+          await page.evaluate(async () => {
+            momoHomeLayout.showPayablesOnHome = true;
+            await saveMomoHomeLayout();
+            applyMomoHomeLayout();
+            renderMomoToday();
+          });
+          await page.evaluate(() => showScreen('home'));
+          await page.waitForTimeout(700);
+          const visibleStates = await page.locator('[data-home-payables]').evaluateAll(nodes => nodes.map(node => ({ hidden: node.hidden, display: getComputedStyle(node).display })));
+          for (const state of visibleStates) {
+            assert.equal(state.hidden, false);
+            assert.notEqual(state.display, 'none');
+          }
+          const homePayable = (await page.locator('#momoActivePayables').innerText()).replaceAll(',', '');
+          assert(homePayable.includes('BPI'));
+          assert(homePayable.includes('3730.46'));
+          assert(!homePayable.includes('41044.47'));
+
+          for (const screen of ['home','payables']) {
+            await page.evaluate((name) => showScreen(name), screen);
+            const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+            assert.equal(overflow, false, `${screen} has horizontal overflow`);
+          }
+
+          assert.deepEqual(errors, []);
+          await browser.close();
+          console.log('Mobile payable privacy/monthly-payment QA passed.');
+          JS
+          npx -y -p playwright@1.55.0 node /tmp/momo-payables-qa.mjs
+
+      - name: Remove temporary QA workflow and commit tested production diff
+        shell: bash
+        run: |
+          git rm .github/workflows/qa-payables-monthly-focus.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js index.html styles.css smart-money.js service-worker.js
+          git commit -m "Focus payables on next payment amounts"
+          git push origin HEAD:fix/payables-monthly-focus
