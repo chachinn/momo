@@ -17895,3 +17895,44 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
   .payable-month-check { min-height: 60px; }
   .payable-month-check > span { width: 24px; height: 24px; }
 }
+
+
+/* MOMO — PAYABLES DUE / ALL VIEWS */
+.payables-view-switch {
+  margin: 20px 0 16px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  background: color-mix(in srgb, var(--surface) 76%, var(--blush));
+}
+
+.payables-view-switch button {
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.payables-view-switch button.active {
+  background: var(--surface);
+  color: var(--rose);
+  box-shadow: 0 5px 16px rgba(91, 62, 59, 0.08);
+}
+
+.payables-view-switch button:active {
+  transform: scale(0.985);
+}
+
+@media (max-width: 350px) {
+  .payables-view-switch button {
+    min-height: 40px;
+    padding-inline: 8px;
+  }
+}

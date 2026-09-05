@@ -37636,6 +37636,7 @@ let selectedPayableId = "";
 
 const PAYABLE_RENDER_BATCH = 60;
 let payableRenderLimit = PAYABLE_RENDER_BATCH;
+let activePayablesView = "due";
 
 
 function getPayableMeta(payable) {
@@ -37834,6 +37835,15 @@ function renderPayables() {
     .filter((item) => isPayableWaitingThisMonth(item))
     .sort((a, b) => String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")));
 
+  const allPayables = [...cards].sort((a, b) => {
+    const doneA = getPayableBalance(a) <= 0;
+    const doneB = getPayableBalance(b) <= 0;
+    if (doneA !== doneB) return doneA ? 1 : -1;
+    const dateCompare = String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
+    if (dateCompare) return dateCompare;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+
   const currentMonthKey = getCurrentMonthKey();
   const paidCycleEntries = cards
     .map((item) => ({ item, payment: getPayableCycleCheckPayment(item, currentMonthKey) }))
@@ -37850,8 +37860,7 @@ function renderPayables() {
   const dueSoon = waiting.reduce((sum, item) => {
     const due = createLocalDate(item.dueDate);
     if (!due || due < today || due > monthEnd) return sum;
-    const amount = getPayableNextPaymentAmount(item);
-    return sum + payablePHPValue(item, amount);
+    return sum + payablePHPValue(item, getPayableNextPaymentAmount(item));
   }, 0);
 
   const now = new Date();
@@ -37868,20 +37877,74 @@ function renderPayables() {
   const dueEl = document.getElementById("payablesDueSoon");
   const paidEl = document.getElementById("payablesPaidMonth");
   const activeCountEl = document.getElementById("payablesActiveCount");
+  const kickerEl = document.getElementById("payablesListKicker");
+  const titleEl = document.getElementById("payablesListTitle");
+  const activeCount = cards.filter((item) => getPayableBalance(item) > 0).length;
 
   if (totalEl) totalEl.textContent = formatPHP(nextPaymentsTotal);
   if (dueEl) dueEl.textContent = formatPHP(dueSoon);
   if (paidEl) paidEl.textContent = formatPHP(paidMonth);
-  if (activeCountEl) activeCountEl.textContent = `${waiting.length} left`;
   if (countEl) countEl.textContent = waiting.length
     ? `${waiting.length} ${waiting.length === 1 ? "payment" : "payments"} left this month`
     : "Nothing waiting this month 🌸";
 
-  empty.hidden = cards.length > 0;
+  const isDueView = activePayablesView !== "all";
+  document.querySelectorAll("[data-payables-view]").forEach((button) => {
+    const selected = button.dataset.payablesView === (isDueView ? "due" : "all");
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+  });
 
-  const visiblePayables = waiting.slice(0, payableRenderLimit);
+  if (kickerEl) kickerEl.textContent = isDueView ? "Your little list" : "Everything saved";
+  if (titleEl) titleEl.textContent = isDueView ? "What’s waiting" : "All payables";
+  if (activeCountEl) activeCountEl.textContent = isDueView ? `${waiting.length} left` : `${activeCount} active`;
+
+  empty.hidden = cards.length > 0;
   const monthLabel = getPayableMonthLabel(currentMonthKey);
 
+  if (!isDueView) {
+    const visibleAll = allPayables.slice(0, payableRenderLimit);
+    const allMarkup = visibleAll.map((item) => {
+      const meta = getPayableMeta(item);
+      const balance = getPayableBalance(item);
+      const nextPayment = getPayableNextPaymentAmount(item);
+      const original = Number(item.originalAmount || 0);
+      const paidPercent = original > 0 ? Math.min(100, Math.max(0, ((original - balance) / original) * 100)) : 0;
+      const done = balance <= 0;
+      const tone = payableDueTone(item.dueDate);
+      const dueCopy = done
+        ? "Fully paid 🌸"
+        : item.dueDate
+          ? `Next · ${formatShortDate(item.dueDate)}`
+          : "No due date set";
+      return `
+        <button class="payable-item ${done ? "is-paid" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}">
+          <span class="payable-item-main">
+            <span class="payable-item-topline">
+              <span>
+                <strong>${escapeHTML(item.name || meta.label)}</strong>
+                <small>${escapeHTML(item.provider || meta.label)}</small>
+              </span>
+              <b>${done ? "Paid off" : formatCurrency(nextPayment, item.currency || "PHP")}</b>
+            </span>
+            <span class="payable-progress"><i style="width:${paidPercent}%"></i></span>
+            <span class="payable-item-foot">
+              <small class="${tone}">${dueCopy}</small>
+              <em>${done ? "finished" : escapeHTML(getPayablePaymentLabel(item))}</em>
+            </span>
+          </span>
+        </button>`;
+    }).join("");
+
+    const loadMoreAll = visibleAll.length < allPayables.length
+      ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${allPayables.length - visibleAll.length} remaining)</button>`
+      : "";
+
+    list.innerHTML = allMarkup + loadMoreAll;
+    return;
+  }
+
+  const visiblePayables = waiting.slice(0, payableRenderLimit);
   const waitingMarkup = visiblePayables.length
     ? visiblePayables.map((item) => {
         const meta = getPayableMeta(item);
@@ -37916,7 +37979,7 @@ function renderPayables() {
             </label>
           </div>`;
       }).join("")
-    : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(monthLabel)}</strong><small>Anything due next month will come back automatically.</small></div>` : "");
+    : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(monthLabel)}</strong><small>Future payables are still available under All Payables.</small></div>` : "");
 
   const loadMoreMarkup = visiblePayables.length < waiting.length
     ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${waiting.length - visiblePayables.length} remaining)</button>`
@@ -37955,6 +38018,15 @@ function renderPayables() {
 
   list.innerHTML = waitingMarkup + loadMoreMarkup + paidMarkup;
 }
+
+
+document.addEventListener("click", (event) => {
+  const view = event.target.closest("[data-payables-view]");
+  if (!view) return;
+  activePayablesView = view.dataset.payablesView === "all" ? "all" : "due";
+  payableRenderLimit = PAYABLE_RENDER_BATCH;
+  renderPayables();
+});
 
 
 document.addEventListener(
@@ -38166,8 +38238,21 @@ async function savePayable(event) {
     if (index >= 0) cards[index] = record;
     else cards.push(record);
     closePayableEditor();
+    const movedOutOfDueView = Boolean(
+      existing &&
+      activePayablesView === "due" &&
+      getPayableBalance(record) > 0 &&
+      !isPayableWaitingThisMonth(record)
+    );
+    if (movedOutOfDueView) activePayablesView = "all";
     renderPayables();
-    showToast(existing ? "Payable updated 🌸" : "Payable added ✿");
+    showToast(
+      movedOutOfDueView
+        ? "Payable updated · shown in All Payables 🌸"
+        : existing
+          ? "Payable updated 🌸"
+          : "Payable added ✿"
+    );
   } catch (error) {
     console.error("Could not save payable:", error);
     showToast("Could not save this payable. Try again.");
