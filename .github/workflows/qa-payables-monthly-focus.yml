@@ -40,7 +40,12 @@ jobs:
           python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
           SERVER_PID=$!
           trap 'kill $SERVER_PID || true' EXIT
-          npx -y -p playwright@1.55.0 node .github/qa/payables-monthly-focus-qa.mjs
+          mkdir -p /tmp/momo-playwright
+          cp .github/qa/payables-monthly-focus-qa.mjs /tmp/momo-playwright/qa.mjs
+          cd /tmp/momo-playwright
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0 >/dev/null 2>&1
+          node qa.mjs
 
       - name: Commit tested production files
         run: |
