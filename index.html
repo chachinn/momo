@@ -305,11 +305,11 @@
               <div><small>Known upcoming</small><strong id="momoProjectedFixed">₱0.00</strong></div>
             </div>
 
-            <div class="momo-today-payables-heading">
+            <div class="momo-today-payables-heading" data-home-payables>
               <div><small>ACTIVE PAYABLES</small><strong>Next on your list</strong></div>
               <button class="text-btn" type="button" data-drawer-nav="payables">See all</button>
             </div>
-            <div id="momoActivePayables" class="momo-today-payables"></div>
+            <div id="momoActivePayables" class="momo-today-payables" data-home-payables></div>
 
             <p class="momo-today-disclaimer">Safe to Spend is a planning estimate based only on information you entered in Momo. It is not a bank balance or financial advice.</p>
           </article>
@@ -469,6 +469,18 @@
         <section class="momo-tool-card">
           <div class="momo-tool-heading"><div><p class="section-kicker">CARD DENSITY</p><h2>How roomy should Home feel?</h2></div></div>
           <div id="momoHomeDensity" class="momo-density-choice"><button type="button" data-momo-density="cozy">Cozy</button><button type="button" data-momo-density="compact">Compact</button></div>
+        </section>
+        <section class="momo-tool-card">
+          <div class="momo-tool-heading"><div><p class="section-kicker">HOME PRIVACY</p><h2>What can Home reveal?</h2></div></div>
+          <div class="momo-home-module-list">
+            <article class="momo-home-module-row">
+              <label>
+                <input type="checkbox" data-momo-home-payables-visible>
+                <span><strong>Show Payables on Home</strong><small>Show payable balances, payoff insights, and active payable cards on Home.</small></span>
+              </label>
+            </article>
+          </div>
+          <p class="page-description">Off by default for privacy. Your Payables screen and calculations still work normally.</p>
         </section>
         <section class="momo-tool-card"><div class="momo-tool-heading"><div><p class="section-kicker">HOME CARDS</p><h2>Show, hide & reorder</h2></div></div><div id="momoHomeModuleList" class="momo-home-module-list"></div></section>
       </section>

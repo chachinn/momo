@@ -41382,7 +41382,7 @@ document.addEventListener("click", (event) => {
 const MOMO_HOME_LAYOUT_KEY = "momo_home_layout_v1";
 const MOMO_HOME_DEFAULT_ORDER = ["snapshot", "today", "reminders", "adventure", "lately"];
 const MOMO_HOME_LABELS = { snapshot: ["Money Snapshot", "Your month at a glance"], today: ["Momo Today", "Safe to Spend and what is due"], reminders: ["Gentle Nudges", "Upcoming reminders"], adventure: ["Next Adventure", "Trip snapshot"], lately: ["Recent Spending", "Your latest entries"] };
-let momoHomeLayout = { order: [...MOMO_HOME_DEFAULT_ORDER], hidden: [], density: "cozy" };
+let momoHomeLayout = { order: [...MOMO_HOME_DEFAULT_ORDER], hidden: [], density: "cozy", showPayablesOnHome: false };
 let momoSearchTimer = null;
 let momoSearchRunId = 0;
 
@@ -41390,7 +41390,7 @@ function loadMomo19Settings(records) {
   const setting = records.find((item) => item?.key === MOMO_HOME_LAYOUT_KEY)?.value;
   if (setting && typeof setting === "object") {
     const order = Array.isArray(setting.order) ? setting.order.filter((id) => MOMO_HOME_DEFAULT_ORDER.includes(id)) : [];
-    momoHomeLayout = { order: [...order, ...MOMO_HOME_DEFAULT_ORDER.filter((id) => !order.includes(id))], hidden: Array.isArray(setting.hidden) ? setting.hidden.filter((id) => MOMO_HOME_DEFAULT_ORDER.includes(id)) : [], density: setting.density === "compact" ? "compact" : "cozy" };
+    momoHomeLayout = { order: [...order, ...MOMO_HOME_DEFAULT_ORDER.filter((id) => !order.includes(id))], hidden: Array.isArray(setting.hidden) ? setting.hidden.filter((id) => MOMO_HOME_DEFAULT_ORDER.includes(id)) : [], density: setting.density === "compact" ? "compact" : "cozy", showPayablesOnHome: setting.showPayablesOnHome === true };
   }
 }
 
@@ -41406,6 +41406,7 @@ function applyMomoHomeLayout() {
     if (element) home.appendChild(element);
   }
   home.querySelectorAll("[data-home-module]").forEach((element) => { element.hidden = momoHomeLayout.hidden.includes(element.dataset.homeModule); });
+  home.querySelectorAll("[data-home-payables]").forEach((element) => { element.hidden = momoHomeLayout.showPayablesOnHome !== true; });
   document.body.classList.toggle("momo-home-compact", momoHomeLayout.density === "compact");
 }
 
@@ -41418,6 +41419,7 @@ function renderMomoHomeCustomizer() {
     return `<article class="momo-home-module-row"><label><input type="checkbox" data-momo-home-visible="${id}" ${hidden ? "" : "checked"}><span><strong>${escapeHTML(label[0])}</strong><small>${escapeHTML(label[1])}</small></span></label><div><button type="button" data-momo-home-move="${id}" data-direction="up" ${index === 0 ? "disabled" : ""}>↑</button><button type="button" data-momo-home-move="${id}" data-direction="down" ${index === momoHomeLayout.order.length - 1 ? "disabled" : ""}>↓</button></div></article>`;
   }).join("");
   document.querySelectorAll("[data-momo-density]").forEach((button) => button.classList.toggle("active", button.dataset.momoDensity === momoHomeLayout.density));
+  document.querySelectorAll("[data-momo-home-payables-visible]").forEach((input) => { input.checked = momoHomeLayout.showPayablesOnHome === true; });
 }
 
 function momoSearchNormalize(value) { return normalizeActivitySearchText(value || ""); }
@@ -41523,6 +41525,14 @@ document.addEventListener("click", async (event) => {
   if (result) {
     if (result.dataset.momoSearchKind === "expense") { const item = expenses.find((entry) => entry.id === result.dataset.momoSearchId); if (item) openExpenseDetail(item); }
     else showScreen(result.dataset.momoSearchDestination);
+    return;
+  }
+  const payablesVisible = event.target.closest("[data-momo-home-payables-visible]");
+  if (payablesVisible) {
+    momoHomeLayout.showPayablesOnHome = Boolean(payablesVisible.checked);
+    await saveMomoHomeLayout(); applyMomoHomeLayout(); renderMomoHomeCustomizer();
+    document.dispatchEvent(new CustomEvent("momo-data-changed"));
+    showToast(momoHomeLayout.showPayablesOnHome ? "Payables will show on Home." : "Payables are hidden from Home.");
     return;
   }
   const visible = event.target.closest("[data-momo-home-visible]");

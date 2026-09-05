@@ -501,7 +501,10 @@ function computeSafeToSpend(snapshot, now, spend, upcoming) {
       insights.push({ icon: "🌱", tone: "good", title: `${jar.name}: about ${money(jar.neededMonthly)}/month`, body: `That pace would reach the target in roughly ${jar.monthsLeft} month${jar.monthsLeft === 1 ? "" : "s"}, based on the saved balance Momo can see.` });
     }
 
-    if (debt && debt.count > 0) {
+    const homeLayout = snapshot.settingMap.get("momo_home_layout_v1");
+    const showPayablesOnHome = Boolean(homeLayout && homeLayout.showPayablesOnHome === true);
+
+    if (showPayablesOnHome && debt && debt.count > 0) {
       const target = debt.highestApr?.apr > 0 ? debt.highestApr : debt.smallest;
       const strategy = debt.highestApr?.apr > 0 ? "highest-interest" : "smallest-balance";
       insights.push({ icon: "🌸", tone: "neutral", title: `${money(debt.total)} remains across payables`, body: `For an optional faster-payoff view, Momo would prioritize the ${strategy} balance first: ${text(target?.item?.name || target?.item?.title || "a payable")}.` });
