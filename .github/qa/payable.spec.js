@@ -86,7 +86,7 @@ test('existing credit-card payable saves due date and keeps monthly anchor', asy
   await dismissTips(page);
 
   await page.locator('#menuButton').click();
-  await page.locator('[data-drawer-nav="payables"]').click();
+  await page.locator('#sideDrawer [data-drawer-nav="payables"]').click();
   await dismissTips(page);
 
   const card = page.locator('[data-payable-open="qa-card"]');
