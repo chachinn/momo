@@ -1,0 +1,66 @@
+name: Temporary Payables Planner QA
+
+on:
+  push:
+    branches:
+      - fix/payables-upcoming-month-total
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: fix/payables-upcoming-month-total
+          fetch-depth: 0
+
+      - name: Apply planner patch
+        run: python .github/qa/patch-payables-planner.py
+
+      - name: Syntax checks
+        run: |
+          node --check app.js
+          node --check service-worker.js
+          grep -q 'const DB_VERSION = 4' app.js
+          grep -q 'momo-reminders.yml' <(find .github/workflows -maxdepth 1 -type f -printf '%f\n')
+          grep -q 'payables-planner-r1' service-worker.js
+          grep -q 'payablePaymentGroup' index.html
+          grep -q 'payablePaydaySlot' index.html
+          grep -q 'getPayableOverallProgressPercent' app.js
+          grep -q 'applyPayablePayment' app.js
+
+      - name: Install Playwright
+        run: |
+          mkdir -p /tmp/momo-playwright
+          cd /tmp/momo-playwright
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Mobile browser QA
+        env:
+          NODE_PATH: /tmp/momo-playwright/node_modules
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID || true' EXIT
+          sleep 2
+          cp .github/qa/payables-planner-qa.mjs /tmp/momo-playwright/payables-planner-qa.mjs
+          cd /tmp/momo-playwright
+          MOMO_QA_URL=http://127.0.0.1:4173 node payables-planner-qa.mjs
+
+      - name: Commit tested production files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js index.html styles.css service-worker.js
+          if git diff --cached --quiet; then
+            echo "No production changes to commit"
+          else
+            git commit -m "Add payday and grouped payable planning"
+            git push origin HEAD:fix/payables-upcoming-month-total
+          fi
