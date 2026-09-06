@@ -1,0 +1,43 @@
+name: Temporary Grouped Payables QA
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/payables-grouped-list-ui
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Apply grouped Payables patch
+        run: python .github/qa/patch-payables-grouped-ui.py
+      - name: Syntax checks
+        run: |
+          node --check app.js
+          node --check service-worker.js
+          grep -q 'DB_VERSION = 4' app.js
+          grep -q 'payables-planner-r2' service-worker.js
+      - name: Install Playwright
+        run: |
+          mkdir -p /tmp/momo-playwright
+          cd /tmp/momo-playwright
+          npm init -y >/dev/null 2>&1
+          npm install playwright@1.55.0 >/dev/null 2>&1
+          npx playwright install --with-deps chromium >/dev/null 2>&1
+      - name: Mobile browser QA
+        run: |
+          python3 -m http.server 4173 >/tmp/momo-http.log 2>&1 &
+          ln -s /tmp/momo-playwright/node_modules node_modules
+          node .github/qa/payables-grouped-ui.spec.mjs
+      - name: Commit tested production files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app.js index.html styles.css service-worker.js
+          git commit -m 'Refine grouped payables hierarchy' || exit 0
+          git push origin HEAD:fix/payables-grouped-list-ui
