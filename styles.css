@@ -18008,3 +18008,49 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
     padding: 12px;
   }
 }
+
+
+/* Payables planner: payday totals, linked payment accounts, partial allocations */
+.payables-payday-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0 12px;
+}
+.payables-payday-summary article {
+  border: 1px solid var(--line, #f2d7df);
+  border-radius: 22px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,.72);
+  min-width: 0;
+}
+.payables-payday-summary small,
+.payables-payday-summary em { display:block; color: var(--muted, #9a7e87); font-style:normal; }
+.payables-payday-summary strong { display:block; margin:4px 0; font-size:1.18rem; color:var(--ink,#513f45); }
+.payables-group-summary { display:grid; gap:10px; margin: 0 0 18px; }
+.payable-group-card {
+  display:flex; align-items:center; justify-content:space-between; gap:14px;
+  padding:14px 16px; border:1px solid var(--line,#f2d7df); border-radius:22px; background:rgba(255,255,255,.64);
+}
+.payable-group-card > div:first-child { min-width:0; }
+.payable-group-card small,.payable-group-card em { display:block; color:var(--muted,#9a7e87); font-style:normal; }
+.payable-group-card strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.payable-group-card > div:last-child { text-align:right; flex:0 0 auto; }
+.payable-group-card b { display:block; margin-bottom:6px; }
+.payable-group-card button { border:0; border-radius:999px; padding:7px 11px; background:#fbe3ec; color:#b96087; font-weight:700; }
+.payable-group-helper { margin-top:-4px; }
+.payable-group-allocation-list { display:grid; gap:10px; margin:12px 0; }
+.payable-group-allocation-row {
+  display:grid !important; grid-template-columns:minmax(0,1fr) 108px; align-items:center; gap:12px;
+  padding:12px; border:1px solid var(--line,#f2d7df); border-radius:18px; background:rgba(255,255,255,.66);
+}
+.payable-group-allocation-row span { min-width:0; }
+.payable-group-allocation-row strong,.payable-group-allocation-row small { display:block; }
+.payable-group-allocation-row small { color:var(--muted,#9a7e87); margin-top:3px; }
+.payable-group-allocation-row input { width:100%; min-width:0; }
+@media (max-width: 390px) {
+  .payables-payday-summary { gap:9px; }
+  .payables-payday-summary article { padding:12px; }
+  .payable-group-card { align-items:flex-start; }
+  .payable-group-allocation-row { grid-template-columns:minmax(0,1fr) 96px; }
+}

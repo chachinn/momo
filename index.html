@@ -2358,6 +2358,12 @@
           <button type="button" role="tab" data-payables-view="all" aria-selected="false">All Payables</button>
         </div>
 
+        <section id="payablesPaydaySummary" class="payables-payday-summary" aria-label="Payday totals">
+          <article><small>1st payday</small><strong id="payablesPaydayOne">₱0.00</strong><em id="payablesPaydayOneHint">this view</em></article>
+          <article><small>2nd payday</small><strong id="payablesPaydayTwo">₱0.00</strong><em id="payablesPaydayTwoHint">this view</em></article>
+        </section>
+        <div id="payablesGroupSummary" class="payables-group-summary"></div>
+
         <div class="payables-section-heading">
           <div>
             <p id="payablesListKicker" class="section-kicker">Your little list</p>
@@ -3729,6 +3735,23 @@
             </div>
           </div>
 
+          <div class="modal-field-row payable-planning-fields">
+            <label>
+              <span>Pay from</span>
+              <select id="payablePaydaySlot">
+                <option value="">Not assigned</option>
+                <option value="first">1st payday</option>
+                <option value="second">2nd payday</option>
+              </select>
+            </label>
+            <label>
+              <span>Paid together under <small>(optional)</small></span>
+              <input id="payablePaymentGroup" type="text" maxlength="60" list="payablePaymentGroupOptions" placeholder="BPI Credit Card">
+              <datalist id="payablePaymentGroupOptions"></datalist>
+            </label>
+          </div>
+          <p class="payable-amount-helper payable-group-helper">Use the same payment account name for installments or loans you pay together in one card statement.</p>
+
           <label>
             <span>Notes <small>(optional)</small></span>
             <textarea id="payableNotes" rows="3" maxlength="300" placeholder="Anything Momo should remember?"></textarea>
@@ -3766,8 +3789,30 @@
           <label><span>Amount Paid</span><input id="payablePaymentAmount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
           <label><span>Date</span><input id="payablePaymentDate" type="date" required></label>
           <label><span>Note <small>(optional)</small></span><input id="payablePaymentNote" type="text" maxlength="100" placeholder="Paid via bank transfer"></label>
-          <p class="payable-payment-note">🌸 This reduces the payable balance. It does not create a new spending expense.</p>
+          <p id="payablePaymentCycleNote" class="payable-payment-note">🌸 Partial payments stay on this due cycle until the full monthly amount is covered.</p>
           <button class="primary-button" type="submit">Record Payment</button>
+        </form>
+      </section>
+    </div>
+
+    <div id="payableGroupPaymentModal" class="modal-backdrop" hidden>
+      <section class="modal-card payable-payment-card" role="dialog" aria-modal="true" aria-labelledby="payableGroupPaymentTitle">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">One payment, separate tracking</p>
+            <h2 id="payableGroupPaymentTitle">Pay together</h2>
+          </div>
+          <button id="closePayableGroupPayment" class="icon-btn soft" type="button" aria-label="Close group payment">×</button>
+        </div>
+        <form id="payableGroupPaymentForm">
+          <input id="payableGroupPaymentName" type="hidden">
+          <input id="payableGroupPaymentScope" type="hidden">
+          <label><span>Total Paid</span><input id="payableGroupPaymentAmount" type="number" inputmode="decimal" min="0.01" step="0.01" required></label>
+          <label><span>Date</span><input id="payableGroupPaymentDate" type="date" required></label>
+          <p class="payable-payment-note">Momo splits partial card payments proportionally across the linked items. You can adjust each allocation before saving.</p>
+          <div id="payableGroupAllocationList" class="payable-group-allocation-list"></div>
+          <label><span>Note <small>(optional)</small></span><input id="payableGroupPaymentNote" type="text" maxlength="100" placeholder="BPI statement payment"></label>
+          <button class="primary-button" type="submit">Record Combined Payment</button>
         </form>
       </section>
     </div>
