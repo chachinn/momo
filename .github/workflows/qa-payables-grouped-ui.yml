@@ -1,6 +1,9 @@
 name: Temporary Grouped Payables QA
 
 on:
+  push:
+    branches:
+      - fix/payables-grouped-list-ui
   workflow_dispatch:
 
 permissions:
@@ -8,6 +11,7 @@ permissions:
 
 jobs:
   qa:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
