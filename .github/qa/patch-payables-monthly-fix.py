@@ -17,11 +17,15 @@ end = text.find("\nfunction closePayableDetail()", start)
 if start < 0 or end < 0:
     raise SystemExit("Could not locate renderPayableDetail")
 segment = text[start:end]
-needle = '  const balance = getPayableBalance(item);\n  const nextPayment = getPayableNextPaymentAmount(item);'
-replacement = '  const balance = getPayableBalance(item);\n  const active = isPayableActive(item);\n  const variableMonthly = isVariableMonthlyPayable(item);\n  const remainingPayments = getPayableRemainingPayments(item);\n  const nextPayment = getPayableNextPaymentAmount(item);'
-if needle not in segment:
+anchor = '  const balance = getPayableBalance(item);'
+if anchor not in segment:
     raise SystemExit("Could not locate Payable Detail balance state")
-segment = segment.replace(needle, replacement, 1)
+if 'const active = isPayableActive(item);' not in segment:
+    segment = segment.replace(
+        anchor,
+        anchor + '\n  const active = isPayableActive(item);\n  const variableMonthly = isVariableMonthlyPayable(item);\n  const remainingPayments = getPayableRemainingPayments(item);',
+        1,
+    )
 app.write_text(text[:start] + segment + text[end:])
 
 # The new generic progress entry supersedes the old installment-only duplicate fields.
