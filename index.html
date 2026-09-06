@@ -2331,7 +2331,7 @@
         <section class="payables-hero">
           <div class="payables-hero-copy">
             <span class="payables-peach"><span class="momo-peach-icon payables-peach-icon" aria-hidden="true"></span></span>
-            <p>Still to pay this month</p>
+            <p id="payablesHeroLabel">Still to pay this month</p>
             <strong id="payablesTotal">₱0.00</strong>
             <small id="payablesCount">Nothing waiting on you 🌸</small>
           </div>
@@ -3604,12 +3604,12 @@
               <input id="payableOriginalAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
             </label>
             <label>
-              <span>Still to Pay <small>(optional)</small></span>
+              <span>Remaining Balance <small>(optional)</small></span>
               <input id="payableBalance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
             </label>
           </div>
 
-          <p class="payable-amount-helper">If Still to Pay is blank, Momo will use the Statement Balance for a credit card or the Original Amount for other payables.</p>
+          <p class="payable-amount-helper">For fixed monthly payables, you can enter the remaining balance, remaining months, or payment progress such as 1 of 24. Momo will calculate the balance when you choose one of the calculated options.</p>
 
           <div class="modal-field-row">
             <label>
@@ -3632,7 +3632,7 @@
 
           <div class="modal-field-row">
             <label>
-              <span>Regular Payment <small>(optional)</small></span>
+              <span id="payableRegularPaymentLabel">Regular Payment <small>(optional)</small></span>
               <input id="payableRegularPayment" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
             </label>
             <label>
@@ -3648,6 +3648,67 @@
             </label>
           </div>
 
+          <section id="payableMonthlySetup" class="payable-monthly-setup">
+            <p class="section-kicker">Monthly setup</p>
+            <div class="modal-field-row">
+              <label>
+                <span>Monthly Amount</span>
+                <select id="payablePaymentMode">
+                  <option value="fixed">Fixed amount each month</option>
+                  <option value="variable">Amount changes each month</option>
+                </select>
+              </label>
+              <label id="payableBalanceModeField">
+                <span>How do you know what’s left?</span>
+                <select id="payableBalanceMode">
+                  <option value="balance">I know the remaining balance</option>
+                  <option value="months">I know the remaining months</option>
+                  <option value="progress">I know the payment progress (1 of 24)</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="payableRemainingMonthsFields" class="modal-field-row" hidden>
+              <label>
+                <span>Remaining Months</span>
+                <input id="payableRemainingMonths" type="number" inputmode="numeric" min="1" step="1" placeholder="11">
+              </label>
+              <div class="payable-calc-card">
+                <small>Calculated remaining balance</small>
+                <strong id="payableCalculatedBalance">—</strong>
+              </div>
+            </div>
+
+            <div id="payableProgressFields" class="modal-field-row" hidden>
+              <label>
+                <span>Payments Completed</span>
+                <input id="payablePaymentsCompleted" type="number" inputmode="numeric" min="0" step="1" placeholder="1">
+              </label>
+              <label>
+                <span>Total Payments</span>
+                <input id="payablePaymentsTotal" type="number" inputmode="numeric" min="1" step="1" placeholder="24">
+              </label>
+              <div class="payable-calc-card">
+                <small>Calculated remaining balance</small>
+                <strong id="payableProgressBalance">—</strong>
+              </div>
+            </div>
+
+            <div id="payableVariableFields" class="payable-variable-fields" hidden>
+              <p class="payable-amount-helper">Enter this month’s amount in the payment field above. After you mark it Paid, Momo clears the amount so you can enter the next statement when it arrives.</p>
+              <div class="modal-field-row">
+                <label>
+                  <span>Statement Day</span>
+                  <input id="payableStatementDay" type="number" inputmode="numeric" min="1" max="31" placeholder="15">
+                </label>
+                <label class="payable-reminder-check">
+                  <span>Statement Reminder</span>
+                  <span class="payable-reminder-checkline"><input id="payableStatementReminder" type="checkbox" checked> Remind me to set this month’s amount</span>
+                </label>
+              </div>
+            </div>
+          </section>
+
           <div id="payableCreditFields" class="payable-special-fields">
             <p class="section-kicker">Credit card details</p>
             <div class="modal-field-row">
@@ -3657,7 +3718,6 @@
             <div class="modal-field-row">
               <label><span>Minimum Due</span><input id="payableMinimumDue" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
               <label><span>APR % <small>(optional)</small></span><input id="payableInterestAPR" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
-              <label><span>Statement Day</span><input id="payableStatementDay" type="number" inputmode="numeric" min="1" max="31" placeholder="15"></label>
             </div>
           </div>
 
