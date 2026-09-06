@@ -37859,6 +37859,14 @@ function getPayableGroupName(payable) {
   return String(payable?.paymentGroup || "").trim();
 }
 
+function isPayableBreakdownOnly(payable) {
+  return Boolean(getPayableGroupName(payable)) && payable?.paymentGroupRole === "breakdown";
+}
+
+function payableCountsTowardTotals(payable) {
+  return !isPayableBreakdownOnly(payable);
+}
+
 function getPayableGroupMembers(groupName) {
   const target = String(groupName || "").trim().toLowerCase();
   return cards.filter((item) => isPayableActive(item) && getPayableGroupName(item).toLowerCase() === target);
@@ -37986,20 +37994,24 @@ function renderPayables() {
     .sort((a, b) => String(b.payment.date || "").localeCompare(String(a.payment.date || "")));
 
   const nextPaymentsTotal = waiting.reduce(
-    (sum, item) => sum + payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey)),
+    (sum, item) => sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey)) : 0),
     0
   );
   const fullMonthPayablesTotal = cards.reduce(
-    (sum, item) => sum + payablePHPValue(item, getPayableMonthlyPlanAmount(item, currentMonthKey)),
+    (sum, item) => sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableMonthlyPlanAmount(item, currentMonthKey)) : 0),
     0
   );
+  const totalRemainingUnpaid = cards.reduce((sum, item) => {
+    if (!payableCountsTowardTotals(item) || !isPayableActive(item) || item.frequency !== "monthly" || isVariableMonthlyPayable(item)) return sum;
+    return sum + payablePHPValue(item, getPayableBalance(item));
+  }, 0);
   const today = createLocalDate(getTodayString());
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
   const dueSoon = waiting.reduce((sum, item) => {
     const due = createLocalDate(item.dueDate);
     if (!due || due < today || due > monthEnd) return sum;
-    return sum + payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey));
+    return sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey)) : 0);
   }, 0);
 
   const now = new Date();
@@ -38028,7 +38040,7 @@ function renderPayables() {
   if (totalEl) totalEl.textContent = formatPHP(isDueView ? nextPaymentsTotal : fullMonthPayablesTotal);
   if (heroLabel) heroLabel.textContent = isDueView ? "Still to pay this month" : "Total for this month";
   if (countEl) {
-    const activeMonthly = cards.filter((item) => isPayableActive(item) && getPayableMonthlyPlanAmount(item, currentMonthKey) > 0).length;
+    const activeMonthly = cards.filter((item) => payableCountsTowardTotals(item) && isPayableActive(item) && getPayableMonthlyPlanAmount(item, currentMonthKey) > 0).length;
     countEl.textContent = isDueView
       ? (waiting.length
           ? `${waiting.length} ${waiting.length === 1 ? "payment" : "payments"} left this month`
@@ -38037,7 +38049,7 @@ function renderPayables() {
   }
 
   const paydayAmount = (slot, dueOnly) => cards.reduce((sum, item) => {
-    if (item.paydaySlot !== slot || !isPayableActive(item)) return sum;
+    if (item.paydaySlot !== slot || !isPayableActive(item) || !payableCountsTowardTotals(item)) return sum;
     const amount = dueOnly
       ? (isPayableWaitingThisMonth(item) ? getPayableCycleRemainingAmount(item, currentMonthKey) : 0)
       : getPayableMonthlyPlanAmount(item, currentMonthKey);
@@ -38052,25 +38064,13 @@ function renderPayables() {
   if (oneHint) oneHint.textContent = isDueView ? "still due" : "monthly plan";
   if (twoHint) twoHint.textContent = isDueView ? "still due" : "monthly plan";
 
+  const remainingTotalEl = document.getElementById("payablesRemainingTotal");
+  if (remainingTotalEl) remainingTotalEl.textContent = formatPHP(totalRemainingUnpaid);
+
   const groupSummary = document.getElementById("payablesGroupSummary");
   if (groupSummary) {
-    const groups = new Map();
-    cards.filter((item) => isPayableActive(item) && getPayableGroupName(item)).forEach((item) => {
-      const name = getPayableGroupName(item);
-      if (!groups.has(name)) groups.set(name, []);
-      groups.get(name).push(item);
-    });
-    groupSummary.innerHTML = [...groups.entries()].map(([name, items]) => {
-      const amount = items.reduce((sum, item) => {
-        const value = isDueView
-          ? (isPayableWaitingThisMonth(item) ? getPayableCycleRemainingAmount(item, currentMonthKey) : 0)
-          : getPayableMonthlyPlanAmount(item, currentMonthKey);
-        return sum + payablePHPValue(item, value);
-      }, 0);
-      const payableNow = items.reduce((sum, item) => sum + payablePHPValue(item, getPayableGroupCycleRemaining(item)), 0);
-      return `<article class="payable-group-card"><div><small>Paid together</small><strong>${escapeHTML(name)}</strong><em>${items.length} linked ${items.length === 1 ? "item" : "items"}</em></div><div><b>${formatPHP(amount)}</b>${payableNow > 0 ? `<button type="button" data-payable-group-pay="${escapeHTML(name)}" data-group-scope="${isDueView ? "due" : "all"}">Pay together</button>` : ""}</div></article>`;
-    }).join("");
-    groupSummary.hidden = groups.size === 0;
+    groupSummary.innerHTML = "";
+    groupSummary.hidden = true;
   }
   document.querySelectorAll("[data-payables-view]").forEach((button) => {
     const selected = button.dataset.payablesView === (isDueView ? "due" : "all");
@@ -38085,89 +38085,79 @@ function renderPayables() {
   empty.hidden = cards.length > 0;
   const monthLabel = getPayableMonthLabel(currentMonthKey);
 
+  const nestedTitle = (item, groupName) => {
+    const provider = String(item.provider || "").trim();
+    const name = String(item.name || "").trim();
+    if (provider && provider.toLowerCase() !== String(groupName || "").toLowerCase()) return provider;
+    return name || getPayableMeta(item).label;
+  };
+
+  const groupUnits = (items) => {
+    const units = [];
+    const seen = new Set();
+    items.forEach((item) => {
+      const group = getPayableGroupName(item);
+      if (!group) { units.push({ type: "item", item }); return; }
+      const key = group.toLowerCase();
+      if (seen.has(key)) return;
+      seen.add(key);
+      units.push({ type: "group", name: group, items: items.filter((entry) => getPayableGroupName(entry).toLowerCase() === key) });
+    });
+    return units;
+  };
+
+  const renderAllItem = (item, nested = false, groupName = "") => {
+    const meta = getPayableMeta(item);
+    const done = !isPayableActive(item);
+    const paidPercent = getPayableOverallProgressPercent(item);
+    const tone = payableDueTone(item.dueDate);
+    const dueCopy = done ? "Fully paid 🌸" : (item.dueDate ? `Next · ${formatShortDate(item.dueDate)}` : "No due date set");
+    const title = nested ? nestedTitle(item, groupName) : (item.name || meta.label);
+    const subtitle = nested
+      ? [getPayablePaymentLabel(item), getPayablePaydayLabel(item), isPayableBreakdownOnly(item) ? "tracking only" : ""].filter(Boolean).join(" · ")
+      : (item.provider || meta.label);
+    return `<button class="payable-item ${nested ? "payable-nested-item" : ""} ${done ? "is-paid" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}">
+      <span class="payable-item-main"><span class="payable-item-topline"><span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(subtitle)}</small></span><b>${done ? "Paid off" : (isVariableMonthlyPayable(item) && !(getPayableMonthlyPlanAmount(item, currentMonthKey) > 0) ? "Set amount" : formatCurrency(getPayableMonthlyPlanAmount(item, currentMonthKey), item.currency || "PHP"))}</b></span>
+      <span class="payable-progress"><i style="width:${paidPercent}%"></i></span><span class="payable-item-foot"><small class="${tone}">${dueCopy}</small>${nested ? "" : `<em>${escapeHTML([getPayablePaymentLabel(item), getPayablePaydayLabel(item)].filter(Boolean).join(" · "))}</em>`}</span></span></button>`;
+  };
+
+  const renderDueItem = (item, nested = false, groupName = "") => {
+    const meta = getPayableMeta(item);
+    const paidPercent = getPayableOverallProgressPercent(item);
+    const cycleTarget = getPayableCycleTargetAmount(item, currentMonthKey);
+    const cyclePaid = getPayableCyclePaidAmount(item, currentMonthKey);
+    const cycleRemaining = getPayableCycleRemainingAmount(item, currentMonthKey);
+    const tone = payableDueTone(item.dueDate);
+    const dueCopy = item.dueDate ? `Due · ${formatShortDate(item.dueDate)}` : "No due date set";
+    const title = nested ? nestedTitle(item, groupName) : (item.name || meta.label);
+    const subtitle = nested
+      ? [cyclePaid > 0 ? `${formatCurrency(cyclePaid, item.currency || "PHP")} paid of ${formatCurrency(cycleTarget, item.currency || "PHP")}` : getPayablePaymentLabel(item), getPayablePaydayLabel(item), isPayableBreakdownOnly(item) ? "tracking only" : ""].filter(Boolean).join(" · ")
+      : (item.provider || meta.label);
+    return `<div class="payable-cycle-row ${nested ? "payable-nested-cycle-row" : ""}"><button class="payable-item ${nested ? "payable-nested-item" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}"><span class="payable-item-main"><span class="payable-item-topline"><span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(subtitle)}</small></span><b>${isVariableMonthlyPayable(item) && !(cycleTarget > 0) ? "Set amount" : formatCurrency(cycleRemaining, item.currency || "PHP")}</b></span><span class="payable-progress"><i style="width:${paidPercent}%"></i></span><span class="payable-item-foot"><small class="${tone}">${dueCopy}</small>${nested ? "" : `<em>${escapeHTML([cyclePaid > 0 ? `${formatCurrency(cyclePaid, item.currency || "PHP")} paid of ${formatCurrency(cycleTarget, item.currency || "PHP")}` : getPayablePaymentLabel(item), getPayablePaydayLabel(item)].filter(Boolean).join(" · "))}</em>`}</span></span></button>${isPayableBreakdownOnly(item) ? "" : `<label class="payable-month-check" aria-label="Mark ${escapeHTML(title)} paid for ${escapeHTML(monthLabel)}"><input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}"><span aria-hidden="true">✓</span><em>Paid</em></label>`}</div>`;
+  };
+
+  const renderGroup = (unit, dueView) => {
+    const counted = unit.items.filter((item) => payableCountsTowardTotals(item) && isPayableActive(item));
+    const amount = counted.reduce((sum, item) => sum + payablePHPValue(item, dueView ? getPayableCycleRemainingAmount(item, currentMonthKey) : getPayableMonthlyPlanAmount(item, currentMonthKey)), 0);
+    const payableNow = counted.reduce((sum, item) => sum + payablePHPValue(item, getPayableGroupCycleRemaining(item)), 0);
+    const primary = unit.items.find((item) => payableCountsTowardTotals(item) && String(item.name || "").trim().toLowerCase() === unit.name.toLowerCase());
+    const children = unit.items.filter((item) => item !== primary);
+    const paydayLabels = [...new Set(counted.map((item) => getPayablePaydayLabel(item)).filter(Boolean))];
+    const meta = [`${unit.items.length} ${unit.items.length === 1 ? "item" : "items"}`, paydayLabels.length === 1 ? paydayLabels[0] : (paydayLabels.length > 1 ? "mixed paydays" : "")].filter(Boolean).join(" · ");
+    return `<section class="payable-account-group"><div class="payable-account-header" ${primary ? `data-payable-open="${escapeHTML(primary.id)}"` : ""}><div class="payable-account-copy"><strong>${escapeHTML(unit.name)}</strong><small>${escapeHTML(meta)}</small></div><div class="payable-account-total"><b>${formatPHP(amount)}</b>${payableNow > 0 ? `<button type="button" data-payable-group-pay="${escapeHTML(unit.name)}" data-group-scope="${dueView ? "due" : "all"}">Pay</button>` : ""}</div></div><div class="payable-account-children">${children.map((item) => dueView ? renderDueItem(item, true, unit.name) : renderAllItem(item, true, unit.name)).join("")}</div></section>`;
+  };
+
   if (!isDueView) {
-    const visibleAll = allPayables.slice(0, payableRenderLimit);
-    const allMarkup = visibleAll.map((item) => {
-      const meta = getPayableMeta(item);
-      const balance = getPayableBalance(item);
-      const nextPayment = getPayableNextPaymentAmount(item);
-      const paidPercent = getPayableOverallProgressPercent(item);
-      const done = !isPayableActive(item);
-      const tone = payableDueTone(item.dueDate);
-      const dueCopy = done
-        ? "Fully paid 🌸"
-        : item.dueDate
-          ? `Next · ${formatShortDate(item.dueDate)}`
-          : "No due date set";
-      return `
-        <button class="payable-item ${done ? "is-paid" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}">
-          <span class="payable-item-main">
-            <span class="payable-item-topline">
-              <span>
-                <strong>${escapeHTML(item.name || meta.label)}</strong>
-                <small>${escapeHTML(item.provider || meta.label)}</small>
-              </span>
-              <b>${done ? "Paid off" : (isVariableMonthlyPayable(item) && !(getPayableMonthlyPlanAmount(item, currentMonthKey) > 0) ? "Set amount" : formatCurrency(getPayableMonthlyPlanAmount(item, currentMonthKey), item.currency || "PHP"))}</b>
-            </span>
-            <span class="payable-progress"><i style="width:${paidPercent}%"></i></span>
-            <span class="payable-item-foot">
-              <small class="${tone}">${dueCopy}</small>
-              <em>${done ? "finished" : escapeHTML([getPayablePaymentLabel(item), getPayablePaydayLabel(item), getPayableGroupName(item)].filter(Boolean).join(" · "))}</em>
-            </span>
-          </span>
-        </button>`;
-    }).join("");
-
-    const loadMoreAll = visibleAll.length < allPayables.length
-      ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${allPayables.length - visibleAll.length} remaining)</button>`
-      : "";
-
-    list.innerHTML = allMarkup + loadMoreAll;
+    const units = groupUnits(allPayables);
+    const visible = units.slice(0, payableRenderLimit);
+    list.innerHTML = visible.map((unit) => unit.type === "group" ? renderGroup(unit, false) : renderAllItem(unit.item)).join("") + (visible.length < units.length ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${units.length - visible.length} remaining)</button>` : "");
     return;
   }
 
-  const visiblePayables = waiting.slice(0, payableRenderLimit);
-  const waitingMarkup = visiblePayables.length
-    ? visiblePayables.map((item) => {
-        const meta = getPayableMeta(item);
-        const balance = getPayableBalance(item);
-        const nextPayment = getPayableNextPaymentAmount(item);
-        const paidPercent = getPayableOverallProgressPercent(item);
-        const cycleTarget = getPayableCycleTargetAmount(item, currentMonthKey);
-        const cyclePaid = getPayableCyclePaidAmount(item, currentMonthKey);
-        const cycleRemaining = getPayableCycleRemainingAmount(item, currentMonthKey);
-        const tone = payableDueTone(item.dueDate);
-        const dueCopy = item.dueDate ? `Due · ${formatShortDate(item.dueDate)}` : "No due date set";
-        return `
-          <div class="payable-cycle-row">
-            <button class="payable-item" type="button" data-payable-open="${escapeHTML(item.id)}">
-              <span class="payable-item-main">
-                <span class="payable-item-topline">
-                  <span>
-                    <strong>${escapeHTML(item.name || meta.label)}</strong>
-                    <small>${escapeHTML(item.provider || meta.label)}</small>
-                  </span>
-                  <b>${isVariableMonthlyPayable(item) && !(cycleTarget > 0) ? "Set amount" : formatCurrency(cycleRemaining, item.currency || "PHP")}</b>
-                </span>
-                <span class="payable-progress"><i style="width:${paidPercent}%"></i></span>
-                <span class="payable-item-foot">
-                  <small class="${tone}">${dueCopy}</small>
-                  <em>${escapeHTML([cyclePaid > 0 ? `${formatCurrency(cyclePaid, item.currency || "PHP")} paid of ${formatCurrency(cycleTarget, item.currency || "PHP")}` : getPayablePaymentLabel(item), getPayablePaydayLabel(item), getPayableGroupName(item)].filter(Boolean).join(" · "))}</em>
-                </span>
-              </span>
-            </button>
-            <label class="payable-month-check" aria-label="Mark ${escapeHTML(item.name || meta.label)} paid for ${escapeHTML(monthLabel)}">
-              <input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}">
-              <span aria-hidden="true">✓</span>
-              <em>Paid</em>
-            </label>
-          </div>`;
-      }).join("")
-    : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(monthLabel)}</strong><small>Future payables are still available under All Payables.</small></div>` : "");
-
-  const loadMoreMarkup = visiblePayables.length < waiting.length
-    ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${waiting.length - visiblePayables.length} remaining)</button>`
-    : "";
+  const units = groupUnits(waiting);
+  const visible = units.slice(0, payableRenderLimit);
+  const waitingMarkup = visible.length ? visible.map((unit) => unit.type === "group" ? renderGroup(unit, true) : renderDueItem(unit.item)).join("") : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(monthLabel)}</strong><small>Future payables are still available under All Payables.</small></div>` : "");
+  const loadMoreMarkup = visible.length < units.length ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${units.length - visible.length} remaining)</button>` : "";
 
   const paidMarkup = paidCycleEntries.length
     ? `
@@ -38253,6 +38243,7 @@ function updatePayableSpecialFields() {
   const variable = document.getElementById("payableVariableFields");
   const regularLabel = document.getElementById("payableRegularPaymentLabel");
   const balanceField = document.getElementById("payableBalance")?.closest("label");
+  const groupRoleField = document.getElementById("payablePaymentGroupRoleField");
 
   if (credit) credit.hidden = type !== "credit-card";
   if (installment) installment.hidden = true;
@@ -38265,6 +38256,7 @@ function updatePayableSpecialFields() {
   if (progress) progress.hidden = frequency !== "monthly" || variableMonthly || balanceMode !== "progress";
   if (variable) variable.hidden = !variableMonthly;
   if (balanceField) balanceField.hidden = variableMonthly || (frequency === "monthly" && balanceMode !== "balance");
+  if (groupRoleField) groupRoleField.hidden = !String(document.getElementById("payablePaymentGroup")?.value || "").trim();
   if (regularLabel) regularLabel.innerHTML = variableMonthly
     ? 'This Month\'s Amount <small>(set after statement)</small>'
     : 'Regular Payment <small>(optional)</small>';
@@ -38335,6 +38327,7 @@ function openPayableEditor(id = "") {
   document.getElementById("payableInstallmentsPaid").value = Number.isFinite(Number(item?.installmentsPaid)) ? Math.max(0, Math.floor(Number(item.installmentsPaid))) : "";
   document.getElementById("payablePaydaySlot").value = item?.paydaySlot || "";
   document.getElementById("payablePaymentGroup").value = item?.paymentGroup || "";
+  document.getElementById("payablePaymentGroupRole").value = item?.paymentGroupRole === "breakdown" ? "breakdown" : "counts";
   const groupOptions = document.getElementById("payablePaymentGroupOptions");
   if (groupOptions) {
     groupOptions.innerHTML = [...new Set(cards.map((entry) => getPayableGroupName(entry)).filter(Boolean))]
@@ -38464,6 +38457,7 @@ async function savePayable(event) {
     statementDay: paymentMode === "variable" ? Number(document.getElementById("payableStatementDay").value || 0) : 0,
     paydaySlot: ["first", "second"].includes(document.getElementById("payablePaydaySlot")?.value) ? document.getElementById("payablePaydaySlot").value : "",
     paymentGroup: document.getElementById("payablePaymentGroup")?.value.trim() || "",
+    paymentGroupRole: document.getElementById("payablePaymentGroup")?.value.trim() && document.getElementById("payablePaymentGroupRole")?.value === "breakdown" ? "breakdown" : "counts",
     startingRemainingMonths: balanceMode === "months" ? Math.max(Number(existing?.startingRemainingMonths || 0), remainingMonths) : Number(existing?.startingRemainingMonths || 0),
     installmentCount: type === "installment" ? (balanceMode === "progress" ? paymentsTotal : Number(document.getElementById("payableInstallmentCount").value || 0)) : 0,
     installmentsPaid: type === "installment" ? (balanceMode === "progress" ? paymentsCompleted : Number(document.getElementById("payableInstallmentsPaid").value || 0)) : 0,
@@ -38567,7 +38561,7 @@ function renderPayableDetail(id) {
       ${remainingPayments !== null ? `<div><small>Payments remaining</small><strong>${remainingPayments}</strong></div>` : ""}
       ${variableMonthly && Number(item.statementDay || 0) ? `<div><small>Statement day</small><strong>Day ${Number(item.statementDay)}</strong></div>` : ""}
       ${getPayablePaydayLabel(item) ? `<div><small>Payday plan</small><strong>${escapeHTML(getPayablePaydayLabel(item))}</strong></div>` : ""}
-      ${getPayableGroupName(item) ? `<div><small>Paid together under</small><strong>${escapeHTML(getPayableGroupName(item))}</strong></div>` : ""}
+      ${getPayableGroupName(item) ? `<div><small>Payment account</small><strong>${escapeHTML(getPayableGroupName(item))}${isPayableBreakdownOnly(item) ? " · tracking only" : ""}</strong></div>` : ""}
       ${item.dueDate ? `<div><small>Next payment</small><strong>${formatDate(item.dueDate)}</strong></div>` : ""}
       ${Number(item.regularPayment || 0) ? `<div><small>Regular payment</small><strong>${formatCurrency(item.regularPayment, item.currency || "PHP")}</strong></div>` : ""}
       ${available !== null ? `<div><small>Available credit</small><strong>${formatCurrency(available, item.currency || "PHP")}</strong></div>` : ""}
@@ -38806,6 +38800,7 @@ function closePayableGroupPayment() {
 
 function getGroupPaymentCandidates(groupName, scope = "all") {
   return getPayableGroupMembers(groupName)
+    .filter((item) => payableCountsTowardTotals(item))
     .filter((item) => scope !== "due" || isPayableWaitingThisMonth(item))
     .map((item) => ({ item, remaining: getPayableGroupCycleRemaining(item) }))
     .filter((entry) => entry.remaining > 0)
@@ -38873,12 +38868,28 @@ async function recordPayableGroupPayment(event) {
   for (const allocation of allocations) {
     const item = cards.find((entry) => String(entry.id) === String(allocation.id));
     if (!item) continue;
-    const result = await applyPayablePayment(item, allocation.amount, paymentDate, note || `Paid together via ${groupName}`, {
+    const result = await applyPayablePayment(item, allocation.amount, paymentDate, note || `Paid via ${groupName}`, {
       source: "group-payment",
       groupPaymentId,
       groupName
     });
     if (result) recorded += payablePHPValue(item, result.actualAmount);
+  }
+
+  const countedStillDue = getPayableGroupMembers(groupName)
+    .filter((item) => payableCountsTowardTotals(item))
+    .some((item) => getPayableGroupCycleRemaining(item) > 0.005);
+  if (!countedStillDue) {
+    const trackingItems = getPayableGroupMembers(groupName).filter((item) => isPayableBreakdownOnly(item));
+    for (const item of trackingItems) {
+      const trackingAmount = getPayableGroupCycleRemaining(item);
+      if (!(trackingAmount > 0)) continue;
+      await applyPayablePayment(item, trackingAmount, paymentDate, note || `Tracked with ${groupName} payment`, {
+        source: "group-breakdown-track",
+        groupPaymentId,
+        groupName
+      });
+    }
   }
   closePayableGroupPayment();
   renderPayables();
@@ -38945,6 +38956,16 @@ document.getElementById("payableType")?.addEventListener("change", updatePayable
 document.getElementById("payableFrequency")?.addEventListener("change", updatePayableSpecialFields);
 document.getElementById("payablePaymentMode")?.addEventListener("change", updatePayableSpecialFields);
 document.getElementById("payableBalanceMode")?.addEventListener("change", updatePayableSpecialFields);
+document.getElementById("payablePaymentGroup")?.addEventListener("input", updatePayableSpecialFields);
+document.getElementById("payablesRemainingToggle")?.addEventListener("click", () => {
+  const panel = document.getElementById("payablesRemainingPanel");
+  const button = document.getElementById("payablesRemainingToggle");
+  if (!panel || !button) return;
+  const opening = panel.hidden;
+  panel.hidden = !opening;
+  button.setAttribute("aria-expanded", opening ? "true" : "false");
+  button.classList.toggle("is-open", opening);
+});
 ["payableRegularPayment", "payableRemainingMonths", "payablePaymentsCompleted", "payablePaymentsTotal", "payableCurrency"].forEach((id) => {
   document.getElementById(id)?.addEventListener("input", updatePayableCalculatedBalance);
   document.getElementById(id)?.addEventListener("change", updatePayableCalculatedBalance);

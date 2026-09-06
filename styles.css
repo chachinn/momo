@@ -18027,17 +18027,29 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 .payables-payday-summary small,
 .payables-payday-summary em { display:block; color: var(--muted, #9a7e87); font-style:normal; }
 .payables-payday-summary strong { display:block; margin:4px 0; font-size:1.18rem; color:var(--ink,#513f45); }
-.payables-group-summary { display:grid; gap:10px; margin: 0 0 18px; }
-.payable-group-card {
-  display:flex; align-items:center; justify-content:space-between; gap:14px;
-  padding:14px 16px; border:1px solid var(--line,#f2d7df); border-radius:22px; background:rgba(255,255,255,.64);
-}
-.payable-group-card > div:first-child { min-width:0; }
-.payable-group-card small,.payable-group-card em { display:block; color:var(--muted,#9a7e87); font-style:normal; }
-.payable-group-card strong { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.payable-group-card > div:last-child { text-align:right; flex:0 0 auto; }
-.payable-group-card b { display:block; margin-bottom:6px; }
-.payable-group-card button { border:0; border-radius:999px; padding:7px 11px; background:#fbe3ec; color:#b96087; font-weight:700; }
+.payables-group-summary { display:none !important; }
+.payables-hero-label-row { display:flex; align-items:center; gap:7px; }
+.payables-hero-label-row p { margin:0; }
+.payables-remaining-toggle { width:23px; height:23px; padding:0; border:0; border-radius:999px; display:grid; place-items:center; background:rgba(255,255,255,.58); color:var(--momo-cocoa-soft); font-size:18px; line-height:1; transition:transform .18s ease; }
+.payables-remaining-toggle.is-open { transform:rotate(90deg); }
+.payables-remaining-panel { margin-top:10px; padding:9px 11px; border:1px solid var(--momo-hairline); border-radius:14px; background:rgba(255,255,255,.34); }
+.payables-remaining-panel span,.payables-remaining-panel b,.payables-remaining-panel small { display:block; }
+.payables-remaining-panel span,.payables-remaining-panel small { color:var(--momo-cocoa-soft); font-size:8px; }
+.payables-remaining-panel b { margin:2px 0; color:var(--momo-cocoa); font-size:13px; }
+.payable-account-group { overflow:hidden; border:1px solid var(--momo-hairline); border-radius:24px; background:rgba(255,255,255,.62); }
+.payable-account-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 15px 12px; }
+.payable-account-header[data-payable-open] { cursor:pointer; }
+.payable-account-copy { min-width:0; }
+.payable-account-copy strong,.payable-account-copy small { display:block; }
+.payable-account-copy strong { color:var(--momo-cocoa); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.payable-account-copy small { margin-top:3px; color:var(--momo-cocoa-soft); font-size:8px; }
+.payable-account-total { flex:0 0 auto; text-align:right; }
+.payable-account-total b { display:block; color:var(--momo-cocoa); }
+.payable-account-total button { margin-top:5px; border:0; border-radius:999px; padding:6px 11px; background:var(--momo-blush); color:var(--momo-peach-deep); font-weight:800; }
+.payable-account-children { display:grid; padding:0 9px 9px; }
+.payable-account-children > * { border-top:1px solid var(--momo-hairline); }
+.payable-account-children .payable-nested-item { border-left:0; border-right:0; border-bottom:0; border-radius:0; background:transparent; box-shadow:none; }
+.payable-nested-cycle-row { border-radius:0; }
 .payable-group-helper { margin-top:-4px; }
 .payable-group-allocation-list { display:grid; gap:10px; margin:12px 0; }
 .payable-group-allocation-row {
@@ -18051,6 +18063,7 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 @media (max-width: 390px) {
   .payables-payday-summary { gap:9px; }
   .payables-payday-summary article { padding:12px; }
-  .payable-group-card { align-items:flex-start; }
+  .payable-account-header { align-items:flex-start; padding:12px 13px 10px; }
+  .payable-account-children { padding:0 7px 7px; }
   .payable-group-allocation-row { grid-template-columns:minmax(0,1fr) 96px; }
 }
