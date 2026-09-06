@@ -2331,9 +2331,17 @@
         <section class="payables-hero">
           <div class="payables-hero-copy">
             <span class="payables-peach"><span class="momo-peach-icon payables-peach-icon" aria-hidden="true"></span></span>
-            <p id="payablesHeroLabel">Still to pay this month</p>
+            <div class="payables-hero-label-row">
+              <p id="payablesHeroLabel">Still to pay this month</p>
+              <button id="payablesRemainingToggle" class="payables-remaining-toggle" type="button" aria-expanded="false" aria-controls="payablesRemainingPanel" aria-label="Show total remaining unpaid">›</button>
+            </div>
             <strong id="payablesTotal">₱0.00</strong>
             <small id="payablesCount">Nothing waiting on you 🌸</small>
+            <div id="payablesRemainingPanel" class="payables-remaining-panel" hidden>
+              <span>Total remaining unpaid</span>
+              <b id="payablesRemainingTotal">₱0.00</b>
+              <small>Across active fixed monthly payables</small>
+            </div>
           </div>
           <div class="payables-hero-sparkles" aria-hidden="true">✦<br>♡</div>
         </section>
@@ -3745,12 +3753,19 @@
               </select>
             </label>
             <label>
-              <span>Paid together under <small>(optional)</small></span>
-              <input id="payablePaymentGroup" type="text" maxlength="60" list="payablePaymentGroupOptions" placeholder="BPI Credit Card">
+              <span>Payment account <small>(optional)</small></span>
+              <input id="payablePaymentGroup" type="text" maxlength="60" list="payablePaymentGroupOptions" placeholder="My credit card">
               <datalist id="payablePaymentGroupOptions"></datalist>
             </label>
           </div>
-          <p class="payable-amount-helper payable-group-helper">Use the same payment account name for installments or loans you pay together in one card statement.</p>
+          <label id="payablePaymentGroupRoleField">
+            <span>How this item counts</span>
+            <select id="payablePaymentGroupRole">
+              <option value="counts">Counts toward the amount to pay</option>
+              <option value="breakdown">Breakdown only — already included in the account total</option>
+            </select>
+          </label>
+          <p class="payable-amount-helper payable-group-helper">Use one payment account name to nest related items. Choose whether each item adds to what you owe or is only a tracking breakdown already included in the account total.</p>
 
           <label>
             <span>Notes <small>(optional)</small></span>
