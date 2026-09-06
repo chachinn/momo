@@ -17936,3 +17936,75 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
     padding-inline: 8px;
   }
 }
+
+
+/* MOMO — PAYABLES MONTHLY SETUP */
+.payable-monthly-setup {
+  margin: 14px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--blush));
+}
+
+.payable-monthly-setup[hidden],
+.payable-variable-fields[hidden],
+#payableRemainingMonthsFields[hidden],
+#payableProgressFields[hidden],
+#payableBalanceModeField[hidden] {
+  display: none !important;
+}
+
+.payable-calc-card {
+  min-width: 0;
+  min-height: 58px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.payable-calc-card small {
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.payable-calc-card strong {
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.payable-variable-fields {
+  margin-top: 10px;
+}
+
+.payable-reminder-check {
+  justify-content: center;
+}
+
+.payable-reminder-checkline {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.payable-reminder-checkline input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 390px) {
+  .payable-monthly-setup {
+    padding: 12px;
+  }
+}
