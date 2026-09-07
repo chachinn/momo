@@ -37867,6 +37867,40 @@ function payableCountsTowardTotals(payable) {
   return !isPayableBreakdownOnly(payable);
 }
 
+function isPayableSyntheticTrackingPayment(payment) {
+  return payment?.source === "group-breakdown-track";
+}
+
+function getPayableRealCyclePayments(payable, monthKey) {
+  if (!payableCountsTowardTotals(payable)) return [];
+  return getPayableCyclePayments(payable, monthKey).filter((payment) => !isPayableSyntheticTrackingPayment(payment));
+}
+
+function getPayableRemainingDebtTotalPHP() {
+  const activeFixed = cards.filter((item) =>
+    isPayableActive(item) &&
+    item.frequency === "monthly" &&
+    !isVariableMonthlyPayable(item)
+  );
+  const standalone = activeFixed.filter((item) => !getPayableGroupName(item));
+  let total = standalone.reduce((sum, item) => sum + payablePHPValue(item, getPayableBalance(item)), 0);
+
+  const groups = new Map();
+  activeFixed.filter((item) => getPayableGroupName(item)).forEach((item) => {
+    const key = getPayableGroupName(item).toLowerCase();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+
+  groups.forEach((items) => {
+    const countedFixed = items.filter((item) => payableCountsTowardTotals(item));
+    const debtItems = countedFixed.length ? countedFixed : items.filter((item) => isPayableBreakdownOnly(item));
+    total += debtItems.reduce((sum, item) => sum + payablePHPValue(item, getPayableBalance(item)), 0);
+  });
+
+  return total;
+}
+
 function getPayableGroupMembers(groupName) {
   const target = String(groupName || "").trim().toLowerCase();
   return cards.filter((item) => isPayableActive(item) && getPayableGroupName(item).toLowerCase() === target);
@@ -37989,8 +38023,18 @@ function renderPayables() {
 
   const currentMonthKey = getCurrentMonthKey();
   const paidCycleEntries = cards
-    .map((item) => ({ item, payment: getPayableCycleCheckPayment(item, currentMonthKey) }))
-    .filter((entry) => entry.payment)
+    .map((item) => {
+      const payments = getPayableRealCyclePayments(item, currentMonthKey);
+      if (!payments.length) return null;
+      const amount = payments.reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0);
+      const storedTarget = payments.reduce((max, payment) => Math.max(max, Number(payment.cycleTargetAmount || 0)), 0);
+      const target = storedTarget > 0 ? storedTarget : getPayableCycleTargetAmount(item, currentMonthKey);
+      if (!(target > 0) || amount + 0.005 < target) return null;
+      const payment = [...payments].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+      const undoPayment = [...payments].reverse().find((entry) => entry?.source === "month-check" && entry?.paidMonth === currentMonthKey) || null;
+      return { item, payment, amount, undoPayment };
+    })
+    .filter(Boolean)
     .sort((a, b) => String(b.payment.date || "").localeCompare(String(a.payment.date || "")));
 
   const nextPaymentsTotal = waiting.reduce(
@@ -38001,10 +38045,7 @@ function renderPayables() {
     (sum, item) => sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableMonthlyPlanAmount(item, currentMonthKey)) : 0),
     0
   );
-  const totalRemainingUnpaid = cards.reduce((sum, item) => {
-    if (!payableCountsTowardTotals(item) || !isPayableActive(item) || item.frequency !== "monthly" || isVariableMonthlyPayable(item)) return sum;
-    return sum + payablePHPValue(item, getPayableBalance(item));
-  }, 0);
+  const totalRemainingUnpaid = getPayableRemainingDebtTotalPHP();
   const today = createLocalDate(getTodayString());
   const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -38016,7 +38057,9 @@ function renderPayables() {
 
   const now = new Date();
   const paidMonth = cards.reduce((sum, item) => {
+    if (!payableCountsTowardTotals(item)) return sum;
     return sum + getPayablePayments(item).reduce((paymentSum, payment) => {
+      if (isPayableSyntheticTrackingPayment(payment)) return paymentSum;
       const date = createLocalDate(payment.date);
       if (!date || date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear()) return paymentSum;
       return paymentSum + payablePHPValue(item, payment.amount);
@@ -38172,7 +38215,7 @@ function renderPayables() {
           <span>${paidCycleEntries.length} ✓</span>
         </div>
         <div class="payables-cycle-done-list">
-          ${paidCycleEntries.map(({ item, payment }) => {
+          ${paidCycleEntries.map(({ item, payment, amount, undoPayment }) => {
             const nextDue = getPayableBalance(item) <= 0
               ? "Fully paid"
               : item.dueDate
@@ -38182,13 +38225,11 @@ function renderPayables() {
               <div class="payable-cycle-row is-cycle-paid">
                 <button class="payable-paid-cycle-card" type="button" data-payable-open="${escapeHTML(item.id)}">
                   <span><strong>${escapeHTML(item.name || getPayableMeta(item).label)}</strong><small>${nextDue}</small></span>
-                  <b>${formatCurrency(payment.amount, item.currency || "PHP")}</b>
+                  <b>${formatCurrency(amount, item.currency || "PHP")}</b>
                 </button>
-                <label class="payable-month-check is-checked" aria-label="Undo paid status for ${escapeHTML(item.name || getPayableMeta(item).label)}">
-                  <input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}" checked>
-                  <span aria-hidden="true">✓</span>
-                  <em>Paid</em>
-                </label>
+                ${undoPayment
+                  ? `<label class="payable-month-check is-checked" aria-label="Undo paid status for ${escapeHTML(item.name || getPayableMeta(item).label)}"><input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}" checked><span aria-hidden="true">✓</span><em>Paid</em></label>`
+                  : `<span class="payable-month-check is-checked is-static" aria-label="Paid"><span aria-hidden="true">✓</span><em>Paid</em></span>`}
               </div>`;
           }).join("")}
         </div>
