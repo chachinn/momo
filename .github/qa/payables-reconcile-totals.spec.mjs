@@ -64,9 +64,9 @@ const expectedDebt = 61566.70 + 58494.40 + 48444.40 + 33574.14 + 28333.36 + 7085
 const actualDebt = await page.evaluate(() => getPayableRemainingDebtTotalPHP());
 assert.equal(Math.round(actualDebt * 100), Math.round(expectedDebt * 100));
 
-// All Payables monthly plan still excludes the BDO tracking-only children, so no double-counting.
+// All Payables remains the full normal monthly plan; BDO breakdown children are not double-counted.
 await page.locator('[data-payables-view="all"]').click();
-assert.equal(await page.locator('#payablesTotal').textContent(), '₱25,333.79');
+assert.equal(await page.locator('#payablesTotal').textContent(), '₱61,333.79');
 
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 await browser.close();
