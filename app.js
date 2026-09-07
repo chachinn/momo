@@ -38055,16 +38055,13 @@ function renderPayables() {
     return sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey)) : 0);
   }, 0);
 
-  const now = new Date();
-  const paidMonth = cards.reduce((sum, item) => {
-    if (!payableCountsTowardTotals(item)) return sum;
-    return sum + getPayablePayments(item).reduce((paymentSum, payment) => {
-      if (isPayableSyntheticTrackingPayment(payment)) return paymentSum;
-      const date = createLocalDate(payment.date);
-      if (!date || date.getMonth() !== now.getMonth() || date.getFullYear() !== now.getFullYear()) return paymentSum;
-      return paymentSum + payablePHPValue(item, payment.amount);
-    }, 0);
-  }, 0);
+  // Keep the hero "Paid this month" amount reconciled to the exact completed
+  // cycles shown in "Done for <month>". Partial/early transactions that have
+  // not completed a cycle must not inflate this summary.
+  const paidMonth = paidCycleEntries.reduce(
+    (sum, entry) => sum + payablePHPValue(entry.item, entry.amount),
+    0
+  );
 
   const totalEl = document.getElementById("payablesTotal");
   const countEl = document.getElementById("payablesCount");
