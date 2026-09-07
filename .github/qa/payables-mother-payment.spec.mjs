@@ -7,6 +7,8 @@ await page.goto('http://127.0.0.1:4173/', { waitUntil: 'domcontentloaded' });
 await page.evaluate(() => {
   localStorage.setItem('momo_welcome_tour_complete_v1', 'yes');
   document.querySelectorAll('#welcomeTour,.tutorial-overlay,.tutorial-backdrop').forEach((el) => el.remove());
+  document.querySelectorAll('section.screen').forEach((el) => el.classList.remove('active'));
+  document.querySelector('section.screen[data-screen="payables"]')?.classList.add('active');
 });
 await page.waitForFunction(() => typeof renderPayables === 'function');
 
@@ -56,8 +58,8 @@ await page.evaluate(async (rows) => {
   renderPayables();
 }, records);
 
-const group = page.locator('.payable-account-group');
-await group.waitFor();
+const group = page.locator('section.screen[data-screen="payables"] .payable-account-group');
+await group.waitFor({ state: 'visible' });
 assert.equal(await group.locator('.payable-account-copy > strong').textContent(), 'Card Bill');
 assert.match(await group.locator('.payable-breakdown-total').textContent(), /₱6,000\.00/);
 assert.equal(await group.locator('.payable-account-children .payable-nested-item').count(), 3);
@@ -67,7 +69,7 @@ await group.locator('.payable-account-header').click();
 await page.locator('#payableDetailModal:not([hidden])').waitFor();
 assert.equal(await page.locator('#payableDetailTitle').textContent(), 'Card Bill');
 await page.locator('#closePayableDetail').click();
-await group.waitFor();
+await group.waitFor({ state: 'visible' });
 assert.equal(await group.locator('.payable-account-children .payable-nested-item').count(), 3);
 
 await page.evaluate(() => openPayableEditor('mother'));
@@ -78,10 +80,6 @@ assert.equal(await page.locator('#payableCreditLimit').isVisible(), true);
 await page.locator('#closePayableModal').click();
 
 await page.evaluate(async () => {
-  const originalToday = getTodayString;
-  // QA runner date is not part of product semantics; explicitly exercise September's cycle.
-  window.__momoQaToday = originalToday;
-  // Directly use payment helper so the mother-cycle sync is tested without relying on wall-clock month.
   const item = cards.find((entry) => entry.id === 'mother');
   const result = await applyPayablePayment(item, 10000, '2026-09-06', 'QA mother payment', { paidMonth: '2026-09' });
   if (!result?.completedCycle) throw new Error('Mother payment did not complete cycle');
