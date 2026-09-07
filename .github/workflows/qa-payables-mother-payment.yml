@@ -1,4 +1,4 @@
-# retry after QA screen scoping fix
+# retry after variable-card hidden-field styling fix
 name: Temporary Mother Payable QA
 
 on:
@@ -20,7 +20,9 @@ jobs:
           ref: fix/payables-mother-payment
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Apply mother payable patch
-        run: python .github/qa/patch-payables-mother-payment.py
+        run: |
+          python .github/qa/patch-payables-mother-payment.py
+          python .github/qa/patch-payables-mother-payment-css.py
       - name: Syntax and focused checks
         run: |
           node --check app.js
