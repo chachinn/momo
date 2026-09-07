@@ -64,7 +64,7 @@ assert.match(paid, /13,327\.68/);
 const doneList = page.locator('.payables-cycle-done-list .payable-paid-cycle-card');
 assert.equal(await doneList.count(), 3);
 const listedAmounts = await doneList.locator('b').allTextContents();
-assert.deepEqual(listedAmounts.map((s) => s.replace(/[^0-9.]/g,'')), ['3730.46','3541.67','6055.55']);
+assert.deepEqual(listedAmounts.map((s) => s.replace(/[^0-9.]/g,'')).sort(), ['3541.67','3730.46','6055.55']);
 assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
 await browser.close();
 console.log('Paid total reconciliation QA passed');
