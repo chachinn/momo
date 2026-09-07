@@ -18067,3 +18067,21 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
   .payable-account-children { padding:0 7px 7px; }
   .payable-group-allocation-row { grid-template-columns:minmax(0,1fr) 96px; }
 }
+
+
+/* Mother payable + tracking-only breakdown context */
+.payable-breakdown-total {
+  display: block;
+  margin-top: 5px;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+
+/* Variable monthly card: the monthly amount is the statement-cycle amount. */
+#payableStatementBalanceField[hidden],
+#payableMinimumDueField[hidden] {
+  display: none !important;
+}
