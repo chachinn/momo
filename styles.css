@@ -18098,16 +18098,23 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 #payableForm .payable-credit-compact {
   margin: 2px 0;
   padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
   background: color-mix(in srgb, var(--blush) 48%, white);
 }
 
+#payableForm .payable-credit-compact[hidden] {
+  display: none !important;
+}
+
 #payableForm .payable-credit-compact .section-kicker {
-  margin-bottom: 9px;
+  grid-column: 1 / -1;
+  margin-bottom: -1px;
 }
 
 #payableForm .payable-credit-compact .modal-field-row {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  display: contents;
 }
 
 #payableForm .payable-credit-compact label {
@@ -18127,7 +18134,7 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
     min-height: 62px;
   }
 
-  #payableForm .payable-credit-compact .modal-field-row {
+  #payableForm .payable-credit-compact {
     grid-template-columns: 1fr;
   }
 }
