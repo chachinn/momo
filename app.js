@@ -38483,7 +38483,7 @@ async function savePayable(event) {
   // Historical payment rows keep their original amounts; only their stored
   // cycle target is rebased so group totals and the detail hero agree with the
   // newly saved amount.
-  const currentCycleKey = existing ? getPayablePaymentCycleMonth(existing) : "";
+  const currentCycleKey = existing ? getPayableMonthKey(existing?.dueDate || getTodayString()) : "";
   const rebasedPayments = getPayablePayments(existing).map((payment) => {
     if (
       existing &&
