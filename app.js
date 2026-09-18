@@ -37841,8 +37841,13 @@ function getPayableMonthlyPlanAmount(payable, monthKey = getCurrentMonthKey()) {
   if (!isPayableActive(payable)) return 0;
   if (payable.frequency === "monthly") {
     if (isVariableMonthlyPayable(payable)) {
+      // The editor's current statement amount is the source of truth for the
+      // active plan. Fall back to this month's completed cycle only while the
+      // next statement amount has not been entered yet.
+      const configuredAmount = Math.max(0, Number(payable.regularPayment || 0));
+      if (configuredAmount > 0) return configuredAmount;
       const target = getPayableCycleTargetAmount(payable, monthKey);
-      return target > 0 ? target : Math.max(0, Number(payable.regularPayment || 0));
+      return target > 0 ? target : 0;
     }
     return getPayableNextPaymentAmount(payable);
   }
@@ -38478,26 +38483,6 @@ async function savePayable(event) {
     return;
   }
 
-  // If a counted group/payable already has payments recorded for the current
-  // cycle, editing its regular amount changes what is due for that cycle too.
-  // Historical payment rows keep their original amounts; only their stored
-  // cycle target is rebased so group totals and the detail hero agree with the
-  // newly saved amount.
-  const currentCycleKey = existing ? getPayableMonthKey(existing?.dueDate || getTodayString()) : "";
-  const rebasedPayments = getPayablePayments(existing).map((payment) => {
-    if (
-      existing &&
-      payableCountsTowardTotals(existing) &&
-      currentCycleKey &&
-      payment?.cycleMonth === currentCycleKey &&
-      !isPayableSyntheticTrackingPayment(payment) &&
-      Number(payment?.cycleTargetAmount || 0) > 0
-    ) {
-      return { ...payment, cycleTargetAmount: regularPayment };
-    }
-    return payment;
-  });
-
   const record = {
     ...(existing || {}),
     id,
@@ -38529,7 +38514,7 @@ async function savePayable(event) {
     installmentCount: type === "installment" ? (balanceMode === "progress" ? paymentsTotal : Number(document.getElementById("payableInstallmentCount").value || 0)) : 0,
     installmentsPaid: type === "installment" ? (balanceMode === "progress" ? paymentsCompleted : Number(document.getElementById("payableInstallmentsPaid").value || 0)) : 0,
     notes: document.getElementById("payableNotes").value.trim(),
-    payments: rebasedPayments,
+    payments: getPayablePayments(existing),
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
