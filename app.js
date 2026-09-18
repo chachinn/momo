@@ -38478,6 +38478,26 @@ async function savePayable(event) {
     return;
   }
 
+  // If a counted group/payable already has payments recorded for the current
+  // cycle, editing its regular amount changes what is due for that cycle too.
+  // Historical payment rows keep their original amounts; only their stored
+  // cycle target is rebased so group totals and the detail hero agree with the
+  // newly saved amount.
+  const currentCycleKey = existing ? getPayableMonthKey(existing?.dueDate || getTodayString()) : "";
+  const rebasedPayments = getPayablePayments(existing).map((payment) => {
+    if (
+      existing &&
+      payableCountsTowardTotals(existing) &&
+      currentCycleKey &&
+      payment?.cycleMonth === currentCycleKey &&
+      !isPayableSyntheticTrackingPayment(payment) &&
+      Number(payment?.cycleTargetAmount || 0) > 0
+    ) {
+      return { ...payment, cycleTargetAmount: regularPayment };
+    }
+    return payment;
+  });
+
   const record = {
     ...(existing || {}),
     id,
@@ -38509,7 +38529,7 @@ async function savePayable(event) {
     installmentCount: type === "installment" ? (balanceMode === "progress" ? paymentsTotal : Number(document.getElementById("payableInstallmentCount").value || 0)) : 0,
     installmentsPaid: type === "installment" ? (balanceMode === "progress" ? paymentsCompleted : Number(document.getElementById("payableInstallmentsPaid").value || 0)) : 0,
     notes: document.getElementById("payableNotes").value.trim(),
-    payments: getPayablePayments(existing),
+    payments: rebasedPayments,
     createdAt: existing?.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
