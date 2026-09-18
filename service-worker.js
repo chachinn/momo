@@ -8,7 +8,7 @@ const APP_VERSION =
 
 
 const CACHE_NAME =
-  `momo-runtime-shell-v${APP_VERSION}-payables-planner-r6`;
+  `momo-runtime-shell-v${APP_VERSION}-payables-planner-r7`;
 
 
 const CORE_SHELL = [
