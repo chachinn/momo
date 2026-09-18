@@ -17940,11 +17940,15 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 
 /* MOMO — PAYABLES MONTHLY SETUP */
 .payable-monthly-setup {
-  margin: 14px 0;
-  padding: 14px;
+  margin: 8px 0;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 18px;
-  background: color-mix(in srgb, var(--surface) 92%, var(--blush));
+  background: color-mix(in srgb, var(--surface) 94%, var(--blush));
+}
+
+.payable-monthly-setup .section-kicker {
+  margin-bottom: 10px;
 }
 
 .payable-monthly-setup[hidden],
@@ -17959,13 +17963,13 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
   min-width: 0;
   min-height: 58px;
   padding: 10px 12px;
-  border-radius: 14px;
-  background: var(--surface);
   border: 1px solid var(--border);
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 3px;
+  background: var(--surface);
 }
 
 .payable-calc-card small {
@@ -17975,37 +17979,163 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 }
 
 .payable-calc-card strong {
-  font-size: 15px;
   overflow-wrap: anywhere;
+  font-size: 15px;
 }
 
 .payable-variable-fields {
-  margin-top: 10px;
+  margin-top: 4px;
+  display: grid;
+  gap: 10px;
 }
 
-.payable-reminder-check {
-  justify-content: center;
+.payable-variable-note {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--blush) 72%, white);
+  color: var(--text-soft);
+  font-size: 9px;
+  line-height: 1.45;
 }
 
-.payable-reminder-checkline {
-  min-height: 46px;
-  display: flex;
+.payable-variable-grid {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+#payableForm .payable-statement-day-field {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.payable-statement-day-field > span {
+  color: var(--text-soft);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.payable-statement-day-field input {
+  min-height: 50px;
+  text-align: center;
+}
+
+#payableForm .payable-reminder-toggle {
+  min-width: 0;
+  min-height: 72px;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
   align-items: center;
   gap: 9px;
-  font-size: 12px;
-  font-weight: 800;
+  background: white;
+  cursor: pointer;
+}
+
+.payable-reminder-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.payable-reminder-copy {
+  min-width: 0;
+}
+
+.payable-reminder-copy strong,
+.payable-reminder-copy small {
+  display: block;
+}
+
+.payable-reminder-copy strong {
   color: var(--text);
+  font-size: 10px;
 }
 
-.payable-reminder-checkline input {
-  width: 20px;
-  height: 20px;
-  flex: 0 0 auto;
+.payable-reminder-copy small {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 8px;
+  line-height: 1.35;
 }
 
-@media (max-width: 390px) {
-  .payable-monthly-setup {
-    padding: 12px;
+.payable-toggle-track {
+  width: 38px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: block;
+  justify-self: end;
+  background: #f5e9e7;
+  transition: background .18s ease, border-color .18s ease;
+}
+
+.payable-toggle-track i {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: block;
+  background: white;
+  box-shadow: 0 2px 5px rgba(73,58,58,.16);
+  transition: transform .18s ease;
+}
+
+.payable-reminder-toggle input:checked + .payable-toggle-track {
+  border-color: var(--pink);
+  background: var(--pink);
+}
+
+.payable-reminder-toggle input:checked + .payable-toggle-track i {
+  transform: translateX(16px);
+}
+
+#payableForm .payable-credit-compact {
+  margin: 2px 0;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  background: color-mix(in srgb, var(--blush) 48%, white);
+}
+
+#payableForm .payable-credit-compact[hidden] {
+  display: none !important;
+}
+
+#payableForm .payable-credit-compact .section-kicker {
+  grid-column: 1 / -1;
+  margin-bottom: -1px;
+}
+
+#payableForm .payable-credit-compact .modal-field-row {
+  display: contents;
+}
+
+#payableForm .payable-credit-compact label {
+  gap: 5px;
+}
+
+#payableForm .payable-credit-compact input {
+  min-height: 44px;
+}
+
+@media (max-width: 350px) {
+  .payable-variable-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #payableForm .payable-reminder-toggle {
+    min-height: 62px;
+  }
+
+  #payableForm .payable-credit-compact {
+    grid-template-columns: 1fr;
   }
 }
 

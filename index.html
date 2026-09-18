@@ -3709,22 +3709,26 @@
             </div>
 
             <div id="payableVariableFields" class="payable-variable-fields" hidden>
-              <p class="payable-amount-helper">Enter this month’s amount in the payment field above. After you mark it Paid, Momo clears the amount so you can enter the next statement when it arrives.</p>
-              <div class="modal-field-row">
-                <label>
-                  <span>Statement Day</span>
+              <p class="payable-variable-note">Use the amount above for the next statement. Once that cycle is paid, Momo clears it so the next statement can be entered.</p>
+              <div class="payable-variable-grid">
+                <label class="payable-statement-day-field">
+                  <span>Statement day</span>
                   <input id="payableStatementDay" type="number" inputmode="numeric" min="1" max="31" placeholder="15">
                 </label>
-                <label class="payable-reminder-check">
-                  <span>Statement Reminder</span>
-                  <span class="payable-reminder-checkline"><input id="payableStatementReminder" type="checkbox" checked> Remind me to set this month’s amount</span>
+                <label class="payable-reminder-toggle">
+                  <span class="payable-reminder-copy">
+                    <strong>Statement reminder</strong>
+                    <small>Remind me to enter the new amount</small>
+                  </span>
+                  <input id="payableStatementReminder" type="checkbox" checked>
+                  <span class="payable-toggle-track" aria-hidden="true"><i></i></span>
                 </label>
               </div>
             </div>
           </section>
 
-          <div id="payableCreditFields" class="payable-special-fields">
-            <p class="section-kicker">Credit card details</p>
+          <div id="payableCreditFields" class="payable-special-fields payable-credit-compact">
+            <p class="section-kicker">Optional card details</p>
             <div class="modal-field-row">
               <label><span>Credit Limit</span><input id="payableCreditLimit" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
               <label id="payableStatementBalanceField"><span>Statement Balance</span><input id="payableStatementBalance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0"></label>
