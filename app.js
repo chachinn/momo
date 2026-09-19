@@ -37774,6 +37774,36 @@ function isPayableWaitingThisMonth(payable) {
   return isPayableWaitingInMonth(payable, getTodayString());
 }
 
+function getPayableMonthReferenceDate(monthKey) {
+  return /^\d{4}-\d{2}$/.test(String(monthKey || "")) ? `${monthKey}-01` : getTodayString();
+}
+
+function isPayableWaitingInCycle(payable, monthKey) {
+  return isPayableWaitingInMonth(payable, getPayableMonthReferenceDate(monthKey));
+}
+
+function getPayablesDueCycleMonthKey() {
+  const currentMonthKey = getCurrentMonthKey();
+  const activeCounted = cards.filter(
+    (item) => isPayableActive(item) && payableCountsTowardTotals(item)
+  );
+
+  if (!activeCounted.length) return currentMonthKey;
+
+  const currentReference = getPayableMonthReferenceDate(currentMonthKey);
+  const hasCurrentOrOverdue = activeCounted.some(
+    (item) => !item.dueDate || isPayableWaitingInMonth(item, currentReference)
+  );
+  if (hasCurrentOrOverdue) return currentMonthKey;
+
+  const nextMonthKey = activeCounted
+    .map((item) => getPayableMonthKey(item.dueDate))
+    .filter((monthKey) => monthKey && monthKey > currentMonthKey)
+    .sort()[0];
+
+  return nextMonthKey || currentMonthKey;
+}
+
 function getPayableCycleCheckPayment(payable, monthKey = getCurrentMonthKey()) {
   return [...getPayablePayments(payable)]
     .reverse()
@@ -38013,8 +38043,15 @@ function renderPayables() {
   const empty = document.getElementById("payablesEmpty");
   if (!list || !empty) return;
 
+  const isDueView = activePayablesView !== "all";
+  const currentMonthKey = getCurrentMonthKey();
+  const dueCycleMonthKey = getPayablesDueCycleMonthKey();
+  const summaryMonthKey = isDueView ? dueCycleMonthKey : currentMonthKey;
+  const monthLabel = getPayableMonthLabel(summaryMonthKey);
+  const dueCycleLabel = getPayableMonthLabel(dueCycleMonthKey);
+
   const waiting = cards
-    .filter((item) => isPayableWaitingThisMonth(item))
+    .filter((item) => isPayableWaitingInCycle(item, dueCycleMonthKey))
     .sort((a, b) => String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")));
 
   const allPayables = [...cards].sort((a, b) => {
@@ -38026,24 +38063,23 @@ function renderPayables() {
     return String(a.name || "").localeCompare(String(b.name || ""));
   });
 
-  const currentMonthKey = getCurrentMonthKey();
   const paidCycleEntries = cards
     .map((item) => {
-      const payments = getPayableRealCyclePayments(item, currentMonthKey);
+      const payments = getPayableRealCyclePayments(item, summaryMonthKey);
       if (!payments.length) return null;
       const amount = payments.reduce((sum, payment) => sum + Math.max(0, Number(payment.amount || 0)), 0);
       const storedTarget = payments.reduce((max, payment) => Math.max(max, Number(payment.cycleTargetAmount || 0)), 0);
-      const target = storedTarget > 0 ? storedTarget : getPayableCycleTargetAmount(item, currentMonthKey);
+      const target = storedTarget > 0 ? storedTarget : getPayableCycleTargetAmount(item, summaryMonthKey);
       if (!(target > 0) || amount + 0.005 < target) return null;
       const payment = [...payments].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
-      const undoPayment = [...payments].reverse().find((entry) => entry?.source === "month-check" && entry?.paidMonth === currentMonthKey) || null;
+      const undoPayment = [...payments].reverse().find((entry) => entry?.source === "month-check" && entry?.paidMonth === summaryMonthKey) || null;
       return { item, payment, amount, undoPayment };
     })
     .filter(Boolean)
     .sort((a, b) => String(b.payment.date || "").localeCompare(String(a.payment.date || "")));
 
   const nextPaymentsTotal = waiting.reduce(
-    (sum, item) => sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey)) : 0),
+    (sum, item) => sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, dueCycleMonthKey)) : 0),
     0
   );
   const fullMonthPayablesTotal = cards.reduce(
@@ -38051,18 +38087,15 @@ function renderPayables() {
     0
   );
   const totalRemainingUnpaid = getPayableRemainingDebtTotalPHP();
-  const today = createLocalDate(getTodayString());
-  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
 
-  const dueSoon = waiting.reduce((sum, item) => {
-    const due = createLocalDate(item.dueDate);
-    if (!due || due < today || due > monthEnd) return sum;
-    return sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, currentMonthKey)) : 0);
-  }, 0);
+  const dueSoon = waiting.reduce(
+    (sum, item) => sum + (payableCountsTowardTotals(item) ? payablePHPValue(item, getPayableCycleRemainingAmount(item, dueCycleMonthKey)) : 0),
+    0
+  );
 
-  // Keep the hero "Paid this month" amount reconciled to the exact completed
-  // cycles shown in "Done for <month>". Partial/early transactions that have
-  // not completed a cycle must not inflate this summary.
+  // Keep the paid summary reconciled to the exact completed cycles rendered
+  // below. In Due view this follows the active due cycle; in All Payables it
+  // remains the current calendar month.
   const paidMonth = paidCycleEntries.reduce(
     (sum, entry) => sum + payablePHPValue(entry.item, entry.amount),
     0
@@ -38077,26 +38110,34 @@ function renderPayables() {
   const titleEl = document.getElementById("payablesListTitle");
   const activeCount = cards.filter((item) => isPayableActive(item)).length;
 
-  if (dueEl) dueEl.textContent = formatPHP(dueSoon);
+  if (dueEl) dueEl.textContent = formatPHP(isDueView ? dueSoon : 0);
   if (paidEl) paidEl.textContent = formatPHP(paidMonth);
 
-  const isDueView = activePayablesView !== "all";
   const heroLabel = document.getElementById("payablesHeroLabel");
   if (totalEl) totalEl.textContent = formatPHP(isDueView ? nextPaymentsTotal : fullMonthPayablesTotal);
-  if (heroLabel) heroLabel.textContent = isDueView ? "Still to pay this month" : "Total for this month";
+  if (heroLabel) heroLabel.textContent = isDueView ? `Still to pay for ${dueCycleLabel}` : "Total for this month";
   if (countEl) {
     const activeMonthly = cards.filter((item) => payableCountsTowardTotals(item) && isPayableActive(item) && getPayableMonthlyPlanAmount(item, currentMonthKey) > 0).length;
     countEl.textContent = isDueView
       ? (waiting.length
-          ? `${waiting.length} ${waiting.length === 1 ? "payment" : "payments"} left this month`
-          : "Nothing waiting this month 🌸")
+          ? `${waiting.length} ${waiting.length === 1 ? "payment" : "payments"} left for ${dueCycleLabel}`
+          : `Nothing waiting for ${dueCycleLabel} 🌸`)
       : `${activeMonthly} active monthly ${activeMonthly === 1 ? "payment" : "payments"}`;
   }
+
+  const comingUpLabel = document.getElementById("payablesComingUpLabel");
+  const comingUpHint = document.getElementById("payablesComingUpHint");
+  const paidLabel = document.getElementById("payablesPaidLabel");
+  const paidHint = document.getElementById("payablesPaidHint");
+  if (comingUpLabel) comingUpLabel.textContent = isDueView ? `Due for ${dueCycleLabel}` : "Coming up";
+  if (comingUpHint) comingUpHint.textContent = isDueView ? "active cycle" : "this month";
+  if (paidLabel) paidLabel.textContent = isDueView ? `Paid for ${dueCycleLabel}` : "Paid this month";
+  if (paidHint) paidHint.textContent = isDueView ? "cycle progress" : "nice work";
 
   const paydayAmount = (slot, dueOnly) => cards.reduce((sum, item) => {
     if (item.paydaySlot !== slot || !isPayableActive(item) || !payableCountsTowardTotals(item)) return sum;
     const amount = dueOnly
-      ? (isPayableWaitingThisMonth(item) ? getPayableCycleRemainingAmount(item, currentMonthKey) : 0)
+      ? (isPayableWaitingInCycle(item, dueCycleMonthKey) ? getPayableCycleRemainingAmount(item, dueCycleMonthKey) : 0)
       : getPayableMonthlyPlanAmount(item, currentMonthKey);
     return sum + payablePHPValue(item, amount);
   }, 0);
@@ -38106,8 +38147,8 @@ function renderPayables() {
   if (paydayTwo) paydayTwo.textContent = formatPHP(paydayAmount("second", isDueView));
   const oneHint = document.getElementById("payablesPaydayOneHint");
   const twoHint = document.getElementById("payablesPaydayTwoHint");
-  if (oneHint) oneHint.textContent = isDueView ? "still due" : "monthly plan";
-  if (twoHint) twoHint.textContent = isDueView ? "still due" : "monthly plan";
+  if (oneHint) oneHint.textContent = isDueView ? `${dueCycleLabel} due` : "monthly plan";
+  if (twoHint) twoHint.textContent = isDueView ? `${dueCycleLabel} due` : "monthly plan";
 
   const remainingTotalEl = document.getElementById("payablesRemainingTotal");
   if (remainingTotalEl) remainingTotalEl.textContent = formatPHP(totalRemainingUnpaid);
@@ -38123,12 +38164,11 @@ function renderPayables() {
     button.setAttribute("aria-selected", selected ? "true" : "false");
   });
 
-  if (kickerEl) kickerEl.textContent = isDueView ? "Your little list" : "Everything saved";
+  if (kickerEl) kickerEl.textContent = isDueView ? `${dueCycleLabel} cycle` : "Everything saved";
   if (titleEl) titleEl.textContent = isDueView ? "What’s waiting" : "All payables";
   if (activeCountEl) activeCountEl.textContent = isDueView ? `${waiting.length} left` : `${activeCount} active`;
 
   empty.hidden = cards.length > 0;
-  const monthLabel = getPayableMonthLabel(currentMonthKey);
 
   const nestedTitle = (item, groupName) => {
     const provider = String(item.provider || "").trim();
@@ -38169,23 +38209,23 @@ function renderPayables() {
   const renderDueItem = (item, nested = false, groupName = "") => {
     const meta = getPayableMeta(item);
     const paidPercent = getPayableOverallProgressPercent(item);
-    const cycleTarget = getPayableCycleTargetAmount(item, currentMonthKey);
-    const cyclePaid = getPayableCyclePaidAmount(item, currentMonthKey);
-    const cycleRemaining = getPayableCycleRemainingAmount(item, currentMonthKey);
+    const cycleTarget = getPayableCycleTargetAmount(item, dueCycleMonthKey);
+    const cyclePaid = getPayableCyclePaidAmount(item, dueCycleMonthKey);
+    const cycleRemaining = getPayableCycleRemainingAmount(item, dueCycleMonthKey);
     const tone = payableDueTone(item.dueDate);
     const dueCopy = item.dueDate ? `Due · ${formatShortDate(item.dueDate)}` : "No due date set";
     const title = nested ? nestedTitle(item, groupName) : (item.name || meta.label);
     const subtitle = nested
       ? [cyclePaid > 0 ? `${formatCurrency(cyclePaid, item.currency || "PHP")} paid of ${formatCurrency(cycleTarget, item.currency || "PHP")}` : getPayablePaymentLabel(item), getPayablePaydayLabel(item), isPayableBreakdownOnly(item) ? "tracking only" : ""].filter(Boolean).join(" · ")
       : (item.provider || meta.label);
-    return `<div class="payable-cycle-row ${nested ? "payable-nested-cycle-row" : ""}"><button class="payable-item ${nested ? "payable-nested-item" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}"><span class="payable-item-main"><span class="payable-item-topline"><span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(subtitle)}</small></span><b>${isVariableMonthlyPayable(item) && !(cycleTarget > 0) ? "Set amount" : formatCurrency(cycleRemaining, item.currency || "PHP")}</b></span><span class="payable-progress"><i style="width:${paidPercent}%"></i></span><span class="payable-item-foot"><small class="${tone}">${dueCopy}</small>${nested ? "" : `<em>${escapeHTML([cyclePaid > 0 ? `${formatCurrency(cyclePaid, item.currency || "PHP")} paid of ${formatCurrency(cycleTarget, item.currency || "PHP")}` : getPayablePaymentLabel(item), getPayablePaydayLabel(item)].filter(Boolean).join(" · "))}</em>`}</span></span></button>${isPayableBreakdownOnly(item) ? "" : `<label class="payable-month-check" aria-label="Mark ${escapeHTML(title)} paid for ${escapeHTML(monthLabel)}"><input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}"><span aria-hidden="true">✓</span><em>Paid</em></label>`}</div>`;
+    return `<div class="payable-cycle-row ${nested ? "payable-nested-cycle-row" : ""}"><button class="payable-item ${nested ? "payable-nested-item" : ""}" type="button" data-payable-open="${escapeHTML(item.id)}"><span class="payable-item-main"><span class="payable-item-topline"><span><strong>${escapeHTML(title)}</strong><small>${escapeHTML(subtitle)}</small></span><b>${isVariableMonthlyPayable(item) && !(cycleTarget > 0) ? "Set amount" : formatCurrency(cycleRemaining, item.currency || "PHP")}</b></span><span class="payable-progress"><i style="width:${paidPercent}%"></i></span><span class="payable-item-foot"><small class="${tone}">${dueCopy}</small>${nested ? "" : `<em>${escapeHTML([cyclePaid > 0 ? `${formatCurrency(cyclePaid, item.currency || "PHP")} paid of ${formatCurrency(cycleTarget, item.currency || "PHP")}` : getPayablePaymentLabel(item), getPayablePaydayLabel(item)].filter(Boolean).join(" · "))}</em>`}</span></span></button>${isPayableBreakdownOnly(item) ? "" : `<label class="payable-month-check" aria-label="Mark ${escapeHTML(title)} paid for ${escapeHTML(dueCycleLabel)}"><input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}" data-payable-month-key="${escapeHTML(dueCycleMonthKey)}"><span aria-hidden="true">✓</span><em>Paid</em></label>`}</div>`;
   };
 
   const renderGroup = (unit, dueView) => {
     const counted = unit.items.filter((item) => payableCountsTowardTotals(item) && isPayableActive(item));
     const breakdowns = unit.items.filter((item) => isPayableBreakdownOnly(item) && isPayableActive(item));
-    const amount = counted.reduce((sum, item) => sum + payablePHPValue(item, dueView ? getPayableCycleRemainingAmount(item, currentMonthKey) : getPayableMonthlyPlanAmount(item, currentMonthKey)), 0);
-    const breakdownTotal = breakdowns.reduce((sum, item) => sum + payablePHPValue(item, dueView ? getPayableCycleRemainingAmount(item, currentMonthKey) : getPayableMonthlyPlanAmount(item, currentMonthKey)), 0);
+    const amount = counted.reduce((sum, item) => sum + payablePHPValue(item, dueView ? getPayableCycleRemainingAmount(item, dueCycleMonthKey) : getPayableMonthlyPlanAmount(item, currentMonthKey)), 0);
+    const breakdownTotal = breakdowns.reduce((sum, item) => sum + payablePHPValue(item, dueView ? getPayableCycleRemainingAmount(item, dueCycleMonthKey) : getPayableMonthlyPlanAmount(item, currentMonthKey)), 0);
     const payableNow = counted.reduce((sum, item) => sum + payablePHPValue(item, getPayableGroupCycleRemaining(item)), 0);
     const namedPrimary = unit.items.find((item) => payableCountsTowardTotals(item) && String(item.name || "").trim().toLowerCase() === unit.name.toLowerCase());
     const primary = namedPrimary || (counted.length === 1 ? counted[0] : null);
@@ -38206,19 +38246,21 @@ function renderPayables() {
 
   const units = groupUnits(waiting);
   const visible = units.slice(0, payableRenderLimit);
-  const waitingMarkup = visible.length ? visible.map((unit) => unit.type === "group" ? renderGroup(unit, true) : renderDueItem(unit.item)).join("") : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(monthLabel)}</strong><small>Future payables are still available under All Payables.</small></div>` : "");
+  const waitingMarkup = visible.length
+    ? visible.map((unit) => unit.type === "group" ? renderGroup(unit, true) : renderDueItem(unit.item)).join("")
+    : (cards.length ? `<div class="payables-month-clear"><span>🌸</span><strong>You’re clear for ${escapeHTML(dueCycleLabel)}</strong><small>No active payment cycle is waiting right now.</small></div>` : "");
   const loadMoreMarkup = visible.length < units.length ? `<button class="secondary-button momo-load-more" type="button" data-load-more-payables>Load more (${units.length - visible.length} remaining)</button>` : "";
 
   const paidMarkup = paidCycleEntries.length
     ? `
       <section class="payables-cycle-done">
         <div class="payables-cycle-done-heading">
-          <div><p class="section-kicker">Paid this month</p><h3>Done for ${escapeHTML(monthLabel)}</h3></div>
+          <div><p class="section-kicker">Paid for this cycle</p><h3>Done for ${escapeHTML(monthLabel)}</h3></div>
           <span>${paidCycleEntries.length} ✓</span>
         </div>
         <div class="payables-cycle-done-list">
           ${paidCycleEntries.map(({ item, payment, amount, undoPayment }) => {
-            const nextDue = getPayableBalance(item) <= 0
+            const nextDue = !isPayableActive(item)
               ? "Fully paid"
               : item.dueDate
                 ? `Back ${formatShortDate(item.dueDate)}`
@@ -38230,7 +38272,7 @@ function renderPayables() {
                   <b>${formatCurrency(amount, item.currency || "PHP")}</b>
                 </button>
                 ${undoPayment
-                  ? `<label class="payable-month-check is-checked" aria-label="Undo paid status for ${escapeHTML(item.name || getPayableMeta(item).label)}"><input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}" checked><span aria-hidden="true">✓</span><em>Paid</em></label>`
+                  ? `<label class="payable-month-check is-checked" aria-label="Undo paid status for ${escapeHTML(item.name || getPayableMeta(item).label)}"><input type="checkbox" data-payable-month-toggle="${escapeHTML(item.id)}" data-payable-month-key="${escapeHTML(summaryMonthKey)}" checked><span aria-hidden="true">✓</span><em>Paid</em></label>`
                   : `<span class="payable-month-check is-checked is-static" aria-label="Paid"><span aria-hidden="true">✓</span><em>Paid</em></span>`}
               </div>`;
           }).join("")}
@@ -38240,7 +38282,6 @@ function renderPayables() {
 
   list.innerHTML = waitingMarkup + loadMoreMarkup + paidMarkup;
 }
-
 
 document.addEventListener("click", (event) => {
   const view = event.target.closest("[data-payables-view]");
@@ -38780,13 +38821,12 @@ async function recordPayablePayment(event) {
   showToast(result.completedCycle ? "Monthly payment covered ✓" : `${formatCurrency(result.remainingAfter, item.currency || "PHP")} still due for this cycle`);
 }
 
-async function markPayablePaidForCurrentMonth(id) {
+async function markPayablePaidForCurrentMonth(id, monthKey = getPayablesDueCycleMonthKey()) {
   const item = cards.find((entry) => String(entry.id) === String(id));
   if (!item || !isPayableActive(item)) return;
-  const monthKey = getCurrentMonthKey();
   if (getPayableCycleCheckPayment(item, monthKey)) return;
-  if (!isPayableWaitingThisMonth(item)) {
-    showToast("That payable is not due this month yet.");
+  if (!isPayableWaitingInCycle(item, monthKey)) {
+    showToast(`That payable is not due for ${getPayableMonthLabel(monthKey)} yet.`);
     return;
   }
   const remaining = getPayableCycleRemainingAmount(item, monthKey);
@@ -38810,11 +38850,9 @@ async function markPayablePaidForCurrentMonth(id) {
   showToast(`${item.name || "Payable"} is paid for ${getPayableMonthLabel(monthKey)} ✓`);
 }
 
-async function undoPayablePaidForCurrentMonth(id) {
+async function undoPayablePaidForCurrentMonth(id, monthKey = getPayablesDueCycleMonthKey()) {
   const item = cards.find((entry) => String(entry.id) === String(id));
   if (!item) return;
-
-  const monthKey = getCurrentMonthKey();
   const payment = getPayableCycleCheckPayment(item, monthKey);
   if (!payment) return;
 
@@ -38848,7 +38886,7 @@ async function undoPayablePaidForCurrentMonth(id) {
   renderSmartReminders();
   resyncAllPhoneReminders();
   document.dispatchEvent(new CustomEvent("momo-data-changed"));
-  showToast(`${item.name || "Payable"} is back on this month’s list.`);
+  showToast(`${item.name || "Payable"} is back on the ${getPayableMonthLabel(monthKey)} list.`);
 }
 
 async function syncPayableGroupBreakdowns(groupName, paymentDate, note = "", groupPaymentId = "") {
@@ -38876,9 +38914,10 @@ function closePayableGroupPayment() {
 }
 
 function getGroupPaymentCandidates(groupName, scope = "all") {
+  const dueCycleMonthKey = getPayablesDueCycleMonthKey();
   return getPayableGroupMembers(groupName)
     .filter((item) => payableCountsTowardTotals(item))
-    .filter((item) => scope !== "due" || isPayableWaitingThisMonth(item))
+    .filter((item) => scope !== "due" || isPayableWaitingInCycle(item, dueCycleMonthKey))
     .map((item) => ({ item, remaining: getPayableGroupCycleRemaining(item) }))
     .filter((entry) => entry.remaining > 0)
     .sort((a, b) => String(a.item.dueDate || "9999-12-31").localeCompare(String(b.item.dueDate || "9999-12-31")));
@@ -38979,10 +39018,11 @@ document.addEventListener("change", async (event) => {
   if (!toggle) return;
 
   const id = toggle.dataset.payableMonthToggle;
+  const monthKey = toggle.dataset.payableMonthKey || getPayablesDueCycleMonthKey();
   toggle.disabled = true;
   try {
-    if (toggle.checked) await markPayablePaidForCurrentMonth(id);
-    else await undoPayablePaidForCurrentMonth(id);
+    if (toggle.checked) await markPayablePaidForCurrentMonth(id, monthKey);
+    else await undoPayablePaidForCurrentMonth(id, monthKey);
   } catch (error) {
     console.error("Could not update monthly payable status:", error);
     toggle.checked = !toggle.checked;
