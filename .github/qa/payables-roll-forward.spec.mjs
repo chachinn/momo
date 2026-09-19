@@ -117,7 +117,7 @@ await page.waitForTimeout(200);
 assert.equal((await page.locator('#payablesHeroLabel').textContent()).trim(), 'Still to pay for December');
 assert.equal((await page.locator('#payablesListKicker').textContent()).trim(), 'December cycle');
 assert.equal(await page.getByText('Done for September', { exact:true }).count(), 0);
-assert.equal(document.documentElement.scrollWidth > document.documentElement.clientWidth, false);
+assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth), false);
 
 await browser.close();
 console.log('Rolling Due cycle QA passed');
