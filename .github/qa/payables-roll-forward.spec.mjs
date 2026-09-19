@@ -77,8 +77,8 @@ assert.equal((await page.locator('#payablesListKicker').textContent()).trim(), '
 assert.equal((await page.locator('#payablesComingUpLabel').textContent()).trim(), 'Due for November');
 assert.equal((await page.locator('#payablesPaidLabel').textContent()).trim(), 'Paid for November');
 assert.equal(await page.getByText("You're clear for September", { exact:true }).count(), 0);
-assert.ok(await page.getByText('Next · Nov 7', { exact:true }).count() >= 2);
-assert.ok(await page.getByText('Next · Nov 10', { exact:true }).count() >= 1);
+assert.ok(await page.getByText('Due · Nov 7', { exact:true }).count() >= 2);
+assert.ok(await page.getByText('Due · Nov 10', { exact:true }).count() >= 1);
 
 const before = await page.locator('#payablesTotal').textContent();
 assert.match(before, /29,397\.13/);
