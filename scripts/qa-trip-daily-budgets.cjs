@@ -5,6 +5,7 @@ const path = require("node:path");
 const { chromium } = require("playwright");
 const root = process.cwd();
 const mime = {".html":"text/html",".js":"application/javascript",".css":"text/css",".json":"application/json",".png":"image/png"};
+let browser;
 const server = http.createServer((req,res) => {
   const filename=path.resolve(root, "." + decodeURIComponent(req.url.split("?")[0] === "/" ? "/index.html" : req.url.split("?")[0]));
   if(!filename.startsWith(root + path.sep) || !fs.existsSync(filename) || !fs.statSync(filename).isFile()){res.writeHead(404);res.end("Not found");return;}
@@ -25,7 +26,7 @@ const all = async (page,store)=>page.evaluate(async (storeName)=>{
 },store);
 (async()=>{
   await new Promise(resolve=>server.listen(8765,"127.0.0.1",resolve));
-  const browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
+  browser=await chromium.launch({headless:true,args:["--no-sandbox"]});
   const page=await browser.newPage({viewport:{width:390,height:844}});
   const errors=[];
   page.on("pageerror",error=>errors.push(String(error)));
@@ -61,7 +62,8 @@ const all = async (page,store)=>page.evaluate(async (storeName)=>{
   assert.equal(trip.dailyBudget,3000);
   assert.deepEqual(trip.dailyBudgets,{"2026-10-18":8000,"2026-10-20":0});
   assert.equal(trip.budget,25000);
-  await page.evaluate(()=>{renderTrips();});
+  console.log("Trip saved to IndexedDB; opening dashboard");
+  await page.evaluate(()=>{renderTrips();showScreen("trips");});
   await page.locator(".trip-dashboard-open").first().click();
   await page.locator(".trip-daily-budget-section").waitFor();
   assert.equal(await page.locator(".trip-day-budget-row").count(),3);
@@ -92,4 +94,4 @@ const all = async (page,store)=>page.evaluate(async (storeName)=>{
   assert.equal(errors.filter(x=>!/Firebase|network|fetch|Authentication/i.test(x)).length,0,"unexpected page errors: "+errors.join(" | "));
   console.log("PASS: Real IndexedDB trip create/edit + default/custom/zero budgets + daily expense, 390x844 overflow, legacy compatibility.");
   await browser.close();
-})().catch(e=>{console.error(e);process.exitCode=1;}).finally(()=>server.close());
+})().catch(e=>{console.error(e);process.exitCode=1;}).finally(async()=>{try{await browser?.close();}catch{}server.close();});
