@@ -4783,20 +4783,16 @@
           </div>
 
           <label class="modal-field">
-            <span>
-              Daily Budget
-              <small class="field-optional">Optional</small>
-            </span>
-
-            <input
-              id="tripDailyBudget"
-              type="number"
-              inputmode="decimal"
-              min="0"
-              step="any"
-              placeholder="0"
-            >
+            <span>Default Daily Budget <small class="field-optional">Optional</small></span>
+            <input id="tripDailyBudget" type="number" inputmode="decimal"
+              min="0" step="any" placeholder="0">
           </label>
+          <details id="tripDailyBudgetDetails" class="trip-day-budget-details">
+            <summary>Customize individual days <small id="tripDailyBudgetCount">Optional</small></summary>
+            <p>Set a different amount for any travel day. Leave a day blank to use the default.</p>
+            <div id="tripDailyBudgetRows" class="trip-day-budget-editor"></div>
+            <p id="tripDailyBudgetPlanSummary" class="trip-day-budget-plan-summary"></p>
+          </details>
 
           <label class="modal-field">
             <span>

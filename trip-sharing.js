@@ -365,6 +365,7 @@
       budget: Number(trip.budget || 0),
       currency: String(trip.currency || "PHP"),
       dailyBudget: Number(trip.dailyBudget || 0),
+      dailyBudgets: trip.dailyBudgets && typeof trip.dailyBudgets === "object" ? { ...trip.dailyBudgets } : {},
       updatedAt: nowISO()
     };
   }
@@ -502,7 +503,8 @@
             endDate: meta.endDate || trip.endDate,
             budget: Number(meta.budget ?? trip.budget ?? 0),
             currency: meta.currency || trip.currency,
-            dailyBudget: Number(meta.dailyBudget ?? trip.dailyBudget ?? 0)
+            dailyBudget: Number(meta.dailyBudget ?? trip.dailyBudget ?? 0),
+            dailyBudgets: meta.dailyBudgets && typeof meta.dailyBudgets === "object" ? { ...meta.dailyBudgets } : (trip.dailyBudgets || {})
           }
         : {}),
       sharedTripStatus: invite.status || trip.sharedTripStatus || "open",
@@ -790,6 +792,7 @@
         budget: Number(meta.budget || 0),
         currency: meta.currency || "PHP",
         dailyBudget: Number(meta.dailyBudget || 0),
+        dailyBudgets: meta.dailyBudgets && typeof meta.dailyBudgets === "object" ? { ...meta.dailyBudgets } : {},
         notes: existing?.notes || "",
         createdAt: existing?.createdAt || nowISO(),
         updatedAt: nowISO(),
