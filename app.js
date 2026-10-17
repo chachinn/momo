@@ -9926,6 +9926,40 @@ function getTripDuration(
 }
 
 
+
+/* Per-date targets live on existing trip records; no IndexedDB migration. */
+function getTripBudgetDates(startDate, endDate) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate || "") ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(endDate || "") ||
+      startDate > endDate) return [];
+  const cursor = new Date(startDate + "T00:00:00Z");
+  const last = new Date(endDate + "T00:00:00Z");
+  if (!Number.isFinite(cursor.getTime()) || !Number.isFinite(last.getTime())) return [];
+  const dates = [];
+  while (cursor <= last && dates.length < 3660) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function getTripDailyBudgetRecord(trip, date) {
+  const overrides = trip.dailyBudgets;
+  const custom = overrides && typeof overrides === "object" &&
+    !Array.isArray(overrides) &&
+    Object.prototype.hasOwnProperty.call(overrides, date);
+  const customAmount = custom ? Number(overrides[date]) : NaN;
+  if (custom && Number.isFinite(customAmount) && customAmount >= 0) {
+    return { amount: customAmount, configured: true, customized: true };
+  }
+  const regular = Number(trip.dailyBudget || 0);
+  return {
+    amount: Number.isFinite(regular) && regular > 0 ? regular : 0,
+    configured: Number.isFinite(regular) && regular > 0,
+    customized: false
+  };
+}
+
 function getTripSpent(
   trip
 ) {
@@ -10221,40 +10255,20 @@ function createTripCardHTML(
         </div>
 
 
+
         <div class="trip-daily-row">
-
+          <span>${duration} ${duration === 1 ? "day" : "days"}</span>
           <span>
-
-            ${duration}
-            ${duration === 1 ? "day" : "days"}
-
-          </span>
-
-
-          <span>
-
-            Daily budget:
-
+            ${trip.dailyBudgets && Object.keys(trip.dailyBudgets).length ? "Daily budgets:" : "Daily budget:"}
             <strong>
-
-              ${
-                dailyBudget >
-                0
-
-                  ? formatCurrency(
-                      dailyBudget,
-                      trip.currency
-                    )
-
-                  : "Not set"
-              }
-
+              ${trip.dailyBudgets && Object.keys(trip.dailyBudgets).length
+                ? "Customized"
+                : dailyBudget > 0
+                  ? formatCurrency(dailyBudget, trip.currency)
+                  : "Not set"}
             </strong>
-
           </span>
-
         </div>
-
 
         ${
           trip.notes
@@ -10779,6 +10793,61 @@ const tripNotes =
 
 
 
+
+let tripDailyBudgetDraft = {};
+
+function updateTripDailyBudgetPlanSummary() {
+  const status = document.getElementById("tripDailyBudgetPlanSummary");
+  const count = document.getElementById("tripDailyBudgetCount");
+  if (!status || !count) return;
+  const dates = getTripBudgetDates(tripStartDate?.value, tripEndDate?.value);
+  const defaultAmount = Number(tripDailyBudget?.value || 0);
+  const validDefault = Number.isFinite(defaultAmount) && defaultAmount >= 0
+    ? defaultAmount : 0;
+  const customDates = dates.filter((date) =>
+    Object.prototype.hasOwnProperty.call(tripDailyBudgetDraft, date) &&
+    tripDailyBudgetDraft[date] !== "");
+  const total = dates.reduce((sum, date) => {
+    const raw = tripDailyBudgetDraft[date];
+    const amount = raw !== undefined && raw !== "" ? Number(raw) : validDefault;
+    return sum + (Number.isFinite(amount) && amount >= 0 ? amount : 0);
+  }, 0);
+  count.textContent = customDates.length ? customDates.length + " custom" : "Optional";
+  status.textContent = dates.length
+    ? "Daily targets total " + formatCurrency(total, tripCurrency?.value || "JPY") +
+      " across " + dates.length + " " + (dates.length === 1 ? "day" : "days") +
+      ". Your overall trip budget stays separate."
+    : "Select travel dates above to set a budget for each day.";
+}
+
+function renderTripDailyBudgetInputs() {
+  const list = document.getElementById("tripDailyBudgetRows");
+  if (!list) return;
+  const dates = getTripBudgetDates(tripStartDate?.value, tripEndDate?.value);
+  list.innerHTML = dates.length ? dates.map((date) => {
+    const custom = Object.prototype.hasOwnProperty.call(tripDailyBudgetDraft, date);
+    const value = custom ? String(tripDailyBudgetDraft[date]) : "";
+    return `<label class="trip-day-budget-input-row">
+      <span>${escapeHTML(formatShortDate(date))}</span>
+      <input type="number" inputmode="decimal" min="0" step="any"
+        data-trip-budget-date="${date}" aria-label="Budget for ${date}"
+        placeholder="Use default" value="${escapeHTML(value)}">
+    </label>`;
+  }).join("") : '<p class="trip-day-budget-empty">Choose your travel dates first.</p>';
+  list.querySelectorAll("[data-trip-budget-date]").forEach((input) => {
+    input.addEventListener("input", () => {
+      const date = input.dataset.tripBudgetDate;
+      if (input.value === "") delete tripDailyBudgetDraft[date];
+      else tripDailyBudgetDraft[date] = input.value;
+      updateTripDailyBudgetPlanSummary();
+    });
+  });
+  updateTripDailyBudgetPlanSummary();
+}
+
+tripDailyBudget?.addEventListener("input", updateTripDailyBudgetPlanSummary);
+tripCurrency?.addEventListener("change", updateTripDailyBudgetPlanSummary);
+
 function formatTripRangeDisplayDate(
   dateString
 ) {
@@ -11191,6 +11260,9 @@ function renderTripCalendar() {
             updateTripDateRangeSummary();
 
 
+            renderTripDailyBudgetInputs();
+
+
             renderTripCalendar();
 
           }
@@ -11392,6 +11464,8 @@ function openTripModal(
       trip.dailyBudget ||
       "";
 
+    tripDailyBudgetDraft = { ...(trip.dailyBudgets || {}) };
+
 
     tripNotes.value =
       trip.notes ||
@@ -11400,6 +11474,7 @@ function openTripModal(
   } else {
 
     tripForm.reset();
+    tripDailyBudgetDraft = {};
 
 
     document
@@ -11429,6 +11504,10 @@ function openTripModal(
 
 
   updateTripDateRangeSummary();
+
+  document.getElementById("tripDailyBudgetDetails").open =
+    Object.keys(tripDailyBudgetDraft).length > 0;
+  renderTripDailyBudgetInputs();
 
 
   setTripCalendarViewFromDate(
@@ -11662,6 +11741,24 @@ tripForm?.addEventListener(
     }
 
 
+
+    const tripDailyBudgetsValue = {};
+    const tripDates = getTripBudgetDates(tripStartDate.value, tripEndDate.value);
+    for (const date of tripDates) {
+      if (!Object.prototype.hasOwnProperty.call(tripDailyBudgetDraft, date)) continue;
+      const raw = tripDailyBudgetDraft[date];
+      if (raw === "") continue;
+      const amount = Number(raw);
+      if (!Number.isFinite(amount) || amount < 0) {
+        document.getElementById("tripDailyBudgetDetails").open = true;
+        renderTripDailyBudgetInputs();
+        document.querySelector('[data-trip-budget-date="' + date + '"]')?.focus();
+        showToast("Enter a valid budget for " + formatShortDate(date) + ".");
+        return;
+      }
+      tripDailyBudgetsValue[date] = Math.round(amount * 100) / 100;
+    }
+
     const existingId =
       tripId.value;
 
@@ -11702,6 +11799,8 @@ tripForm?.addEventListener(
 
       dailyBudget:
         tripDailyBudgetValue,
+
+      dailyBudgets: tripDailyBudgetsValue,
 
       notes:
         tripNotes.value
@@ -12445,6 +12544,50 @@ function renderTripShoppingSection(
 }
 
 
+
+function renderTripDailyBudgetSection(trip, tripExpenses) {
+  const dates = getTripBudgetDates(trip.startDate, trip.endDate);
+  if (!dates.length) return "";
+  const spentByDate = new Map();
+  tripExpenses.forEach((expense) => {
+    if (!dates.includes(expense.date)) return;
+    spentByDate.set(expense.date, (spentByDate.get(expense.date) || 0) +
+      convertCurrency(expense.amount, expense.currency, trip.currency));
+  });
+  const totalTargets = dates.reduce((total, date) =>
+    total + getTripDailyBudgetRecord(trip, date).amount, 0);
+  const rows = dates.map((date) => {
+    const target = getTripDailyBudgetRecord(trip, date);
+    const spent = spentByDate.get(date) || 0;
+    const remaining = target.amount - spent;
+    return `<div class="trip-day-budget-row">
+      <div class="trip-day-budget-date">
+        <strong>${escapeHTML(formatShortDate(date))}</strong>
+        <small>${target.customized ? "Custom target" : target.configured ? "Default target" : "No target set"}</small>
+      </div>
+      <div class="trip-day-budget-values">
+        <strong>${target.configured ? formatCurrency(target.amount, trip.currency) : "Not set"}</strong>
+        <small>Spent ${formatCurrency(spent, trip.currency)}</small>
+        ${target.configured ? `<small class="${remaining < 0 ? "danger" : "positive"}">
+          ${remaining >= 0 ? "Left " : "Over "}${formatCurrency(Math.abs(remaining), trip.currency)}
+        </small>` : ""}
+      </div>
+    </div>`;
+  }).join("");
+  return `<section class="trip-dashboard-section trip-daily-budget-section">
+    <div class="trip-dashboard-section-heading">
+      <div><p class="eyebrow">By travel day</p><h3>Daily Budgets</h3></div>
+      ${trip.sharedTripRole === "partner" ? "" :
+        '<button class="secondary-btn trip-daily-budget-edit" type="button">Edit</button>'}
+    </div>
+    <p class="trip-daily-budget-subtitle">
+      ${formatCurrency(totalTargets, trip.currency)} in daily targets ·
+      ${formatCurrency(Number(trip.budget || 0), trip.currency)} total trip budget
+    </p>
+    <div class="trip-day-budget-list">${rows}</div>
+  </section>`;
+}
+
 function renderTripDashboard(
   trip
 ) {
@@ -12769,6 +12912,8 @@ function renderTripDashboard(
     </section>
 
 
+    ${renderTripDailyBudgetSection(trip, tripExpenses)}
+
     <section class="trip-dashboard-metrics">
 
       <article>
@@ -12851,7 +12996,7 @@ function renderTripDashboard(
       <article>
 
         <span>
-          Daily Allowance
+          Suggested / day
         </span>
 
         <strong>
@@ -12875,7 +13020,7 @@ function renderTripDashboard(
                   1
                     ? "day"
                     : "days"
-                } left`
+                } left · based on trip money remaining`
               : "trip ended"
           }
         </small>
@@ -13321,6 +13466,12 @@ function renderTripDashboard(
 
 
   attachExpenseDetailActions();
+
+  tripDashboardBody.querySelector(".trip-daily-budget-edit")?.addEventListener("click", () => {
+    closeTripDashboard();
+    openTripModal(trip);
+    document.getElementById("tripDailyBudgetDetails").open = true;
+  });
 
 
   tripDashboardBody

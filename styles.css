@@ -18215,3 +18215,96 @@ body.momo-home-compact .momo-home-section{margin-top:15px}body.momo-home-compact
 #payableMinimumDueField[hidden] {
   display: none !important;
 }
+
+
+/* Compact, scrollable date-specific trip budget editor and dashboard. */
+.trip-day-budget-details {
+  margin: 3px 0 13px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 11px 12px;
+  background: var(--surface);
+}
+.trip-day-budget-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+.trip-day-budget-details summary small {
+  float: right;
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 500;
+  margin-right: 9px;
+}
+.trip-day-budget-details > p {
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.5;
+  margin: 9px 0;
+}
+.trip-day-budget-editor {
+  max-height: 300px;
+  overflow-y: auto;
+  display: grid;
+  gap: 8px;
+  padding: 2px 2px 4px 0;
+}
+.trip-day-budget-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 130px);
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.trip-day-budget-input-row span { min-width: 0; }
+.trip-modal-card .trip-day-budget-input-row input {
+  min-width: 0;
+  width: 100%;
+  min-height: 42px;
+  font-size: 16px;
+  text-align: right;
+}
+.trip-day-budget-empty { font-size: 11px; color: var(--text-soft); }
+.trip-daily-budget-subtitle {
+  color: var(--text-soft);
+  font-size: 10px;
+  margin: 0 0 10px;
+  line-height: 1.45;
+}
+.trip-day-budget-list {
+  max-height: 365px;
+  overflow-y: auto;
+  display: grid;
+  gap: 0;
+}
+.trip-day-budget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+}
+.trip-day-budget-date, .trip-day-budget-values {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trip-day-budget-date strong, .trip-day-budget-values strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.trip-day-budget-date small, .trip-day-budget-values small {
+  font-size: 10px;
+  color: var(--text-soft);
+}
+.trip-day-budget-values { text-align: right; }
+.trip-day-budget-values small.danger { color: var(--danger, #c24d61); }
+.trip-day-budget-values small.positive { color: var(--green, #477d69); }
+.trip-daily-budget-section .secondary-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 11px;
+}

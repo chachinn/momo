@@ -1179,7 +1179,8 @@ async function createTripShareInvite(trip = {}) {
       endDate: String(trip.endDate || ""),
       budget: Number(trip.budget || 0),
       currency: String(trip.currency || "PHP"),
-      dailyBudget: Number(trip.dailyBudget || 0)
+      dailyBudget: Number(trip.dailyBudget || 0),
+      dailyBudgets: trip.dailyBudgets && typeof trip.dailyBudgets === "object" ? { ...trip.dailyBudgets } : {}
     },
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
@@ -1332,7 +1333,8 @@ async function updateTripShareMeta(rawCode, trip = {}) {
         endDate: String(trip.endDate || ""),
         budget: Number(trip.budget || 0),
         currency: String(trip.currency || "PHP"),
-        dailyBudget: Number(trip.dailyBudget || 0)
+        dailyBudget: Number(trip.dailyBudget || 0),
+      dailyBudgets: trip.dailyBudgets && typeof trip.dailyBudgets === "object" ? { ...trip.dailyBudgets } : {}
       },
       updatedAt: new Date().toISOString()
     },
