@@ -57,7 +57,7 @@ let browser;
   await tripCard.locator(".trip-dashboard-open").click();
   const section=page.locator(".trip-dashboard-section").filter({has:page.locator(".trip-dashboard-expense-list")});
   await section.waitFor();
-  assert.match(await section.locator(".eyebrow").innerText(),/All logged · 25 expenses/);
+  assert.match(await section.locator(".eyebrow").innerText(),/All logged · 25 expenses/i);
   assert.equal(await section.locator(".transaction-swipe-shell").count(),25);
   assert.equal(await section.locator('[data-expense-detail-id="qa-expense-01"]').count(),1);
   assert.equal(await section.locator('[data-expense-detail-id="qa-expense-25"]').count(),1);
