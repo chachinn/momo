@@ -13392,7 +13392,7 @@ function renderTripDashboard(
         <div>
 
           <p class="eyebrow">
-            Recent
+            All logged · ${tripExpenses.length} ${tripExpenses.length === 1 ? "expense" : "expenses"}
           </p>
 
           <h3>
@@ -13412,11 +13412,6 @@ function renderTripDashboard(
               <div class="trip-dashboard-expense-list">
 
                 ${tripExpenses
-
-                  .slice(
-                    0,
-                    5
-                  )
 
                   .map(
                     (expense) =>
