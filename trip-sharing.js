@@ -96,7 +96,8 @@
       code: operation.code,
       expenseId: operation.expenseId || "",
       tripId: operation.tripId || "",
-      queuedAt: Date.now()
+      queuedAt: Date.now(),
+      revision: Math.random().toString(36).slice(2)
     });
 
     writeOutbox(filtered);
@@ -129,11 +130,14 @@
       const pending = readOutbox();
       if (!pending.length) return;
       const remaining = [];
+      const pendingByKey = new Map(pending.map((item) => [item.key, item]));
 
       for (const item of pending) {
         try {
           if (item.kind === "expense") {
-            const expense = (api.getExpenses?.() || []).find(
+            // Pending uploads must use the committed record, not stale UI data.
+            const savedExpenses = await (api.getStoredExpenses?.() || api.getExpenses?.() || []);
+            const expense = savedExpenses.find(
               (entry) =>
                 entry.sharedTripCode === item.code &&
                 (entry.sharedExpenseId || entry.id) === item.expenseId
@@ -171,7 +175,17 @@
         }
       }
 
-      writeOutbox(remaining);
+      // A user can log another expense while an upload is awaiting the
+      // network. Never discard newly queued operations on completion.
+      const arrivedDuringFlush = readOutbox().filter((item) => {
+        const before = pendingByKey.get(item.key);
+        return !before ||
+          item.revision !== before.revision ||
+          item.queuedAt !== before.queuedAt;
+      });
+      const merged = new Map();
+      [...remaining, ...arrivedDuringFlush].forEach((item) => merged.set(item.key, item));
+      writeOutbox([...merged.values()]);
     } finally {
       flushInFlight = false;
     }
