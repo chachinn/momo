@@ -34,6 +34,9 @@
     "sharedTripCreatedAt"
   ];
 
+  // Keep shared deletion candidates in memory only. No background restore or writes.
+  const recoverableSharedExpenses = new Map();
+  const expenseApplyChains = new Map();
   const expenseWatchStops = new Map();
   const inviteWatchStops = new Map();
   let remoteApplyInFlight = false;
@@ -324,7 +327,8 @@
   }
 
   async function onExpenseSaved(expense, previous) {
-    if (remoteApplyInFlight) return;
+    // This handler only runs for explicit local edits, never cloud imports.
+    // Do not drop a user save merely because a snapshot is being processed.
 
     if (previous?.sharedTripCode && previous.sharedTripCode !== expense?.sharedTripCode) {
       await sendTombstoneOrQueue(previous);
@@ -461,18 +465,18 @@
         const sharedExpenseId = String(remote?.expenseId || "");
         if (!sharedExpenseId) continue;
         const existing = bySharedId.get(sharedExpenseId) || null;
-        const remoteTime = Number(remote.updatedAtMs || 0);
-        const localTime = Number(existing?.sharedUpdatedAtMs || 0);
-        if (existing && localTime >= remoteTime) continue;
 
-        if (remote.deleted) {
-          // Safety hold: a remote tombstone must not permanently remove the
-          // only device copy of an expense. Explicit local deletes still work.
-          // Keep the local data until a reversible archive/restore flow exists.
-          continue;
-        }
+        // A remote tombstone cannot delete local entries. The original cloud
+        // expense payload may still be available for explicit recovery.
+        if (remote.deleted) continue;
 
-        const record = remoteToLocalExpense(remote, trip, existing);
+        // Safety-first collaboration: never overwrite a saved device record
+        // from a cloud snapshot. The user can edit their local copy, and
+        // previously unseen shared expenses can still be imported normally.
+        // This also prevents stale partner updates from erasing local details.
+        if (existing) continue;
+
+        const record = remoteToLocalExpense(remote, trip, null);
         await api.upsertExpense?.(record, { refresh: false });
         bySharedId.set(sharedExpenseId, record);
         changed = true;
@@ -529,6 +533,8 @@
     try { inviteWatchStops.get(code)?.(); } catch {}
     expenseWatchStops.delete(code);
     inviteWatchStops.delete(code);
+    expenseApplyChains.delete(code);
+    recoverableSharedExpenses.delete(code);
   }
 
   function watchTrip(trip) {
@@ -547,7 +553,19 @@
 
       const stopExpenses = cloud.watchExpenses?.(code, (payload) => {
         const currentTrip = getTripByCode(code);
-        if (currentTrip) applyRemoteExpenses(currentTrip, payload?.docs || []).catch(console.warn);
+        if (!currentTrip) return;
+        const docs = payload?.docs || [];
+        recoverableSharedExpenses.set(code, docs.filter((item) =>
+          item?.deleted && item?.expense && Number(item.expense.amount) > 0
+        ).map((item) => ({ ...item, expense: { ...item.expense } })));
+        // Serialize snapshots for each trip. Concurrent listener callbacks
+        // must not both conclude that an unseen expense is absent.
+        const previous = expenseApplyChains.get(code) || Promise.resolve();
+        const nextApply = previous.catch(() => {}).then(() =>
+          applyRemoteExpenses(currentTrip, docs)
+        );
+        expenseApplyChains.set(code, nextApply);
+        nextApply.catch(console.warn);
       });
       if (typeof stopExpenses === "function") expenseWatchStops.set(code, stopExpenses);
     } catch (error) {
@@ -933,6 +951,47 @@
     flushOutbox().catch(() => {});
   }
 
+  function getRecoverableExpenses(trip) {
+    const code = trip?.sharedTripCode;
+    if (!code) return [];
+    return (recoverableSharedExpenses.get(code) || []).map((remote) => ({
+      expenseId: String(remote.expenseId || ""),
+      title: String(remote.expense?.title || "Untitled expense"),
+      amount: Number(remote.expense?.amount || 0),
+      currency: String(remote.expense?.currency || trip.currency || "PHP"),
+      date: String(remote.expense?.date || ""),
+      category: String(remote.expense?.category || ""),
+      // If already restored, offer no second restore action.
+      restoredId: remoteLocalId(trip, "recovered-" + remote.expenseId)
+    }));
+  }
+
+  async function restoreRecoverableExpense(trip, expenseId) {
+    const api = localApi();
+    if (!trip?.sharedTripCode || !api) return false;
+    const remote = (recoverableSharedExpenses.get(trip.sharedTripCode) || [])
+      .find((item) => String(item.expenseId) === String(expenseId));
+    if (!remote?.deleted || !remote?.expense || !(Number(remote.expense.amount) > 0)) return false;
+    const restoredId = remoteLocalId(trip, "recovered-" + remote.expenseId);
+    const stored = await (api.getStoredExpenses?.() || []);
+    if (stored.some((item) => item.id === restoredId)) return false;
+    const output = remoteToLocalExpense(
+      { ...remote, expenseId: "recovered-" + remote.expenseId, deleted: false },
+      trip,
+      null
+    );
+    // The restored entry is a new independent expense. The original cloud
+    // tombstone and all other local records are left untouched.
+    output.id = restoredId;
+    output.sharedExpenseId = "recovered-" + remote.expenseId;
+    output.updatedAt = nowISO();
+    output.sharedUpdatedAt = output.updatedAt;
+    output.sharedUpdatedAtMs = Date.now();
+    await api.upsertExpense(output, { refresh: true });
+    onExpenseSaved(output, null).catch(console.warn);
+    return true;
+  }
+
   window.MomoTripSharing = {
     decorateTripBeforeSave,
     decorateExpenseBeforeSave,
@@ -942,7 +1001,9 @@
     tripShareIconHTML,
     openTripModal,
     flushOutbox,
-    watchAllSharedTrips
+    watchAllSharedTrips,
+    getRecoverableExpenses,
+    restoreRecoverableExpense
   };
 
   if (document.readyState === "loading") {
