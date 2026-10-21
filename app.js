@@ -12664,6 +12664,30 @@ function renderSavedSharedTripCopies(trip) {
   </details>`;
 }
 
+function renderCloudDeletedTripEntries(trip) {
+  const candidates = window.MomoTripSharing?.getRecoverableExpenses?.(trip) || [];
+  if (!candidates.length) return "";
+  return `<details class="trip-dashboard-section" open>
+    <summary><strong>Cloud-deleted entries available for review (${candidates.length})</strong></summary>
+    <p class="muted">These are previously shared entries still readable from
+    cloud history. They are NOT included in your totals. Nothing has been
+    restored automatically. Only restore an item if you recognize it as missing.</p>
+    <div class="trip-dashboard-expense-list">
+      ${candidates.map((item) => `<div class="trip-dashboard-category">
+        <div class="trip-dashboard-category-top">
+          <strong>${escapeHTML(item.title)}</strong>
+          <strong>${formatCurrency(item.amount, item.currency)}</strong>
+        </div>
+        <small>${escapeHTML(item.date)} · ${escapeHTML(item.category)}</small>
+        <button type="button" class="secondary-btn"
+          data-recover-shared-expense="${escapeHTML(item.expenseId)}">
+          Restore this entry
+        </button>
+      </div>`).join("")}
+    </div>
+  </details>`;
+}
+
 function renderTripDashboard(
   trip
 ) {
@@ -13515,6 +13539,7 @@ function renderTripDashboard(
     </section>
 
     ${renderSavedSharedTripCopies(trip)}
+    ${renderCloudDeletedTripEntries(trip)}
 
     <div class="trip-dashboard-bottom-actions">
 
@@ -13538,6 +13563,32 @@ function renderTripDashboard(
 
 
   attachExpenseDetailActions();
+
+  tripDashboardBody.querySelectorAll("[data-recover-shared-expense]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      const okay = window.confirm(
+        "Restore this saved cloud entry as a NEW trip expense? Nothing else will be deleted or replaced."
+      );
+      if (!okay) { button.disabled = false; return; }
+      try {
+        const restored = await window.MomoTripSharing?.restoreRecoverableExpense?.(
+          trip, button.dataset.recoverSharedExpense
+        );
+        if (restored) {
+          showToast("Trip expense restored locally ✨");
+          renderTripDashboard(trips.find((item) => item.id === trip.id) || trip);
+        } else {
+          showToast("Entry already restored or no longer available.");
+          button.disabled = false;
+        }
+      } catch (error) {
+        console.warn("Could not restore trip expense:", error);
+        showToast("Could not restore this entry.");
+        button.disabled = false;
+      }
+    });
+  });
 
   tripDashboardBody.querySelector(".trip-daily-budget-edit")?.addEventListener("click", () => {
     closeTripDashboard();
