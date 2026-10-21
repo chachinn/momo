@@ -1,0 +1,38 @@
+name: Momo Trip Expense Safety QA
+on:
+  pull_request:
+    paths:
+      - 'app.js'
+      - 'trip-sharing.js'
+      - 'service-worker.js'
+      - 'scripts/qa-trip-expenses.cjs'
+      - '.github/workflows/momo-trip-expense-qa.yml'
+  push:
+    branches: [main, fix/momo-trip-expense-sync-safety-qa-20261021]
+    paths:
+      - 'app.js'
+      - 'trip-sharing.js'
+      - 'service-worker.js'
+      - 'scripts/qa-trip-expenses.cjs'
+      - '.github/workflows/momo-trip-expense-qa.yml'
+jobs:
+  synthetic-browser-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check JavaScript syntax
+        run: |
+          node --check app.js
+          node --check trip-sharing.js
+          node --check service-worker.js
+          node --check scripts/qa-trip-expenses.cjs
+      - name: Install isolated Playwright
+        run: npm install --no-save --no-package-lock playwright@1.56.1
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Verify synthetic IndexedDB and trip UI
+        run: node scripts/qa-trip-expenses.cjs
