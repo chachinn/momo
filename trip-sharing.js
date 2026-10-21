@@ -35,6 +35,7 @@
   ];
 
   const expenseWatchStops = new Map();
+  const expenseApplyChains = new Map();
   const inviteWatchStops = new Map();
   let remoteApplyInFlight = false;
   let flushInFlight = false;
@@ -95,7 +96,8 @@
       code: operation.code,
       expenseId: operation.expenseId || "",
       tripId: operation.tripId || "",
-      queuedAt: Date.now()
+      queuedAt: Date.now(),
+      revision: Math.random().toString(36).slice(2)
     });
 
     writeOutbox(filtered);
@@ -128,11 +130,14 @@
       const pending = readOutbox();
       if (!pending.length) return;
       const remaining = [];
+      const pendingByKey = new Map(pending.map((item) => [item.key, item]));
 
       for (const item of pending) {
         try {
           if (item.kind === "expense") {
-            const expense = (api.getExpenses?.() || []).find(
+            // Pending uploads must use the committed record, not stale UI data.
+            const savedExpenses = await (api.getStoredExpenses?.() || api.getExpenses?.() || []);
+            const expense = savedExpenses.find(
               (entry) =>
                 entry.sharedTripCode === item.code &&
                 (entry.sharedExpenseId || entry.id) === item.expenseId
@@ -170,7 +175,17 @@
         }
       }
 
-      writeOutbox(remaining);
+      // A user can log another expense while an upload is awaiting the
+      // network. Never discard newly queued operations on completion.
+      const arrivedDuringFlush = readOutbox().filter((item) => {
+        const before = pendingByKey.get(item.key);
+        return !before ||
+          item.revision !== before.revision ||
+          item.queuedAt !== before.queuedAt;
+      });
+      const merged = new Map();
+      [...remaining, ...arrivedDuringFlush].forEach((item) => merged.set(item.key, item));
+      writeOutbox([...merged.values()]);
     } finally {
       flushInFlight = false;
     }
@@ -324,7 +339,8 @@
   }
 
   async function onExpenseSaved(expense, previous) {
-    if (remoteApplyInFlight) return;
+    // Only user saves invoke this callback. A concurrent remote import must
+    // never prevent the user's newly committed expense from syncing.
 
     if (previous?.sharedTripCode && previous.sharedTripCode !== expense?.sharedTripCode) {
       await sendTombstoneOrQueue(previous);
@@ -352,7 +368,7 @@
   }
 
   async function onExpenseDeleted(expense) {
-    if (remoteApplyInFlight || !expense?.sharedTripCode) return;
+    if (!expense?.sharedTripCode) return;
     await sendTombstoneOrQueue(expense);
   }
 
@@ -439,12 +455,20 @@
   async function applyRemoteExpenses(trip, docs) {
     const api = localApi();
     if (!api || !trip?.sharedTripCode) return;
-    const allExpenses = api.getExpenses?.() || [];
-    const bySharedId = new Map(
-      allExpenses
-        .filter((expense) => expense.sharedTripCode === trip.sharedTripCode && expense.sharedExpenseId)
-        .map((expense) => [expense.sharedExpenseId, expense])
-    );
+    // Use the authoritative database, not a UI array that might not yet
+    // include the expense just saved by this phone.
+    const allExpenses = await (api.getStoredExpenses?.() || api.getExpenses?.() || []);
+    const knownSharedIds = new Set();
+    for (const expense of allExpenses) {
+      if (expense.tripId !== trip.id) continue;
+      if (expense.sharedTripCode === trip.sharedTripCode && expense.sharedExpenseId) {
+        knownSharedIds.add(String(expense.sharedExpenseId));
+      }
+      // Older locally logged expenses can precede the share metadata.
+      if (!expense.sharedTripCode && expense.id) {
+        knownSharedIds.add(String(expense.id));
+      }
+    }
 
     remoteApplyInFlight = true;
     let changed = false;
@@ -452,22 +476,19 @@
       for (const remote of docs || []) {
         const sharedExpenseId = String(remote?.expenseId || "");
         if (!sharedExpenseId) continue;
-        const existing = bySharedId.get(sharedExpenseId) || null;
-        const remoteTime = Number(remote.updatedAtMs || 0);
-        const localTime = Number(existing?.sharedUpdatedAtMs || 0);
-        if (existing && localTime > remoteTime) continue;
+        // No automatic cloud deletion or replacement of local records.
+        // An existing sync ID might even have historical copies with different
+        // content; preserve all of them untouched for manual review.
+        if (remote.deleted || knownSharedIds.has(sharedExpenseId)) continue;
+        if (!remote.expense || !(Number(remote.expense.amount) > 0) ||
+            !Number.isFinite(Number(remote.expense.amount))) continue;
 
-        if (remote.deleted) {
-          if (existing) {
-            await api.deleteExpense?.(existing.id, { refresh: false });
-            changed = true;
-          }
-          continue;
-        }
+        const localId = remoteLocalId(trip, sharedExpenseId);
+        if (allExpenses.some((expense) => expense.id === localId)) continue;
 
-        const record = remoteToLocalExpense(remote, trip, existing);
+        const record = remoteToLocalExpense(remote, trip, null);
         await api.upsertExpense?.(record, { refresh: false });
-        bySharedId.set(sharedExpenseId, record);
+        knownSharedIds.add(sharedExpenseId);
         changed = true;
       }
     } finally {
@@ -522,6 +543,7 @@
     try { inviteWatchStops.get(code)?.(); } catch {}
     expenseWatchStops.delete(code);
     inviteWatchStops.delete(code);
+    expenseApplyChains.delete(code);
   }
 
   function watchTrip(trip) {
@@ -540,7 +562,15 @@
 
       const stopExpenses = cloud.watchExpenses?.(code, (payload) => {
         const currentTrip = getTripByCode(code);
-        if (currentTrip) applyRemoteExpenses(currentTrip, payload?.docs || []).catch(console.warn);
+        if (!currentTrip) return;
+        // Firestore can invoke the listener again before the previous
+        // IndexedDB import completes. Serialize per trip to avoid duplicates.
+        const previous = expenseApplyChains.get(code) || Promise.resolve();
+        const next = previous.catch(() => {}).then(() =>
+          applyRemoteExpenses(currentTrip, payload?.docs || [])
+        );
+        expenseApplyChains.set(code, next);
+        next.catch((error) => console.warn("Momo shared-trip sync:", error));
       });
       if (typeof stopExpenses === "function") expenseWatchStops.set(code, stopExpenses);
     } catch (error) {
