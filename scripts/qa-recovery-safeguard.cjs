@@ -68,7 +68,7 @@ let browser;
  assert.equal(state.rows.find(x=>x.id==="qa-meal").amount,600);
  assert.equal(state.recover.length,1,"Cloud deletion history should be visible for review");
  assert.equal(state.recover[0].title,"Recover missing train ticket");
- await page.evaluate(()=>{showScreen("trips");renderTrips();});
+ await page.evaluate(()=>{showScreen("trips");renderTrips();document.getElementById("contextTipModal")?.remove();});
  await page.locator(".trip-entry-card").filter({hasText:"Japan QA Recovery"}).locator(".trip-dashboard-open").click();
  let modal=page.locator("#tripDashboardModal");
  assert.match(await modal.innerText(),/Cloud-deleted entries available for review \(1\)/);
