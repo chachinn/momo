@@ -466,10 +466,9 @@
         if (existing && localTime >= remoteTime) continue;
 
         if (remote.deleted) {
-          if (existing) {
-            await api.deleteExpense?.(existing.id, { refresh: false });
-            changed = true;
-          }
+          // Safety hold: a remote tombstone must not permanently remove the
+          // only device copy of an expense. Explicit local deletes still work.
+          // Keep the local data until a reversible archive/restore flow exists.
           continue;
         }
 
