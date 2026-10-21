@@ -986,14 +986,30 @@ async function performCleanStartIfNeeded() {
 // ========================================
 
 
-/* Only collapse multiple local copies of the SAME shared cloud expense for
-   calculations and display. The underlying IndexedDB records are untouched. */
+/* Shared copies are never removed from IndexedDB. Matching copies with
+   different content must remain visible. Exact mirror copies remain available
+   for review below the Trip Dashboard expense list. */
+let hiddenSharedExpenseCopies = [];
+function sharedExpenseContentKey(expense) {
+  return JSON.stringify([
+    String(expense.title || ""), Number(expense.amount || 0),
+    String(expense.currency || ""), String(expense.date || ""),
+    String(expense.category || ""), String(expense.location || ""),
+    String(expense.notes || ""), String(expense.paymentMethod || ""),
+    String(expense.otherPaymentMethod || ""), expense.tags || [],
+    String(expense.photo || "")
+  ]);
+}
 function collapseSharedTripExpenseMirrors(records) {
   const result = [];
   const seen = new Map();
+  const hidden = [];
   for (const expense of records) {
     const key = expense.sharedTripCode && expense.sharedExpenseId
-      ? JSON.stringify([expense.sharedTripCode, expense.sharedExpenseId]) : "";
+      ? JSON.stringify([
+          expense.sharedTripCode, expense.sharedExpenseId,
+          sharedExpenseContentKey(expense)
+        ]) : "";
     if (!key) {
       result.push(expense);
       continue;
@@ -1005,15 +1021,18 @@ function collapseSharedTripExpenseMirrors(records) {
       continue;
     }
     const previous = result[index];
-    const currentTime = Number(expense.sharedUpdatedAtMs || 0);
+    const time = Number(expense.sharedUpdatedAtMs || 0);
     const previousTime = Number(previous.sharedUpdatedAtMs || 0);
-    if (currentTime > previousTime ||
-        (currentTime === previousTime &&
-         expense.id === expense.sharedExpenseId &&
-         previous.id !== previous.sharedExpenseId)) {
+    if (time > previousTime ||
+      (time === previousTime && expense.id === expense.sharedExpenseId &&
+       previous.id !== previous.sharedExpenseId)) {
+      hidden.push(previous);
       result[index] = expense;
+    } else {
+      hidden.push(expense);
     }
   }
+  hiddenSharedExpenseCopies = hidden;
   return result;
 }
 
@@ -12623,6 +12642,28 @@ function renderTripDailyBudgetSection(trip, tripExpenses) {
   </section>`;
 }
 
+function renderSavedSharedTripCopies(trip) {
+  const copies = hiddenSharedExpenseCopies.filter((item) => item.tripId === trip.id);
+  if (!copies.length) return "";
+  return `<details class="trip-dashboard-section" open>
+    <summary><strong>Other saved copies (${copies.length})</strong></summary>
+    <p class="muted">These records are still saved on this device. They are shown
+      separately to avoid counting identical synced copies twice. No records
+      have been deleted or changed.</p>
+    <div class="trip-dashboard-expense-list">
+      ${copies.map((item) => `<div class="trip-dashboard-category">
+        <div class="trip-dashboard-category-top">
+          <strong>${escapeHTML(item.title || "Untitled expense")}</strong>
+          <strong>${formatCurrency(item.amount, item.currency || trip.currency)}</strong>
+        </div>
+        <small>${escapeHTML(item.date || "")} · ${escapeHTML(item.category || "Other")}</small>
+        <small> · ${escapeHTML(item.paymentMethod || "")}</small>
+        ${item.notes ? `<p>${escapeHTML(item.notes)}</p>` : ""}
+      </div>`).join("")}
+    </div>
+  </details>`;
+}
+
 function renderTripDashboard(
   trip
 ) {
@@ -13473,6 +13514,7 @@ function renderTripDashboard(
 
     </section>
 
+    ${renderSavedSharedTripCopies(trip)}
 
     <div class="trip-dashboard-bottom-actions">
 
