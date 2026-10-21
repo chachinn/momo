@@ -985,6 +985,38 @@ async function performCleanStartIfNeeded() {
 // LOAD ALL DATA
 // ========================================
 
+
+/* Only collapse multiple local copies of the SAME shared cloud expense for
+   calculations and display. The underlying IndexedDB records are untouched. */
+function collapseSharedTripExpenseMirrors(records) {
+  const result = [];
+  const seen = new Map();
+  for (const expense of records) {
+    const key = expense.sharedTripCode && expense.sharedExpenseId
+      ? JSON.stringify([expense.sharedTripCode, expense.sharedExpenseId]) : "";
+    if (!key) {
+      result.push(expense);
+      continue;
+    }
+    const index = seen.get(key);
+    if (index === undefined) {
+      seen.set(key, result.length);
+      result.push(expense);
+      continue;
+    }
+    const previous = result[index];
+    const currentTime = Number(expense.sharedUpdatedAtMs || 0);
+    const previousTime = Number(previous.sharedUpdatedAtMs || 0);
+    if (currentTime > previousTime ||
+        (currentTime === previousTime &&
+         expense.id === expense.sharedExpenseId &&
+         previous.id !== previous.sharedExpenseId)) {
+      result[index] = expense;
+    }
+  }
+  return result;
+}
+
 async function loadAppData() {
 
   let settingsRecords = [];
@@ -1036,6 +1068,9 @@ async function loadAppData() {
     )
 
   ]);
+
+  // Reconcile shared-trip display without deleting anything from IndexedDB.
+  expenses = collapseSharedTripExpenseMirrors(expenses);
 
 
   const favoriteSetting =
@@ -15840,6 +15875,8 @@ saveFavoriteButton?.addEventListener(
 // SAVE EXPENSE
 // ========================================
 
+let expenseSaveInFlight = false;
+
 expenseForm?.addEventListener(
   "submit",
   async (
@@ -15847,6 +15884,11 @@ expenseForm?.addEventListener(
   ) => {
 
     event.preventDefault();
+
+    // Both Save controls share a single in-flight submission.
+    if (expenseSaveInFlight) return;
+    expenseSaveInFlight = true;
+    try {
 
 
     if (
@@ -16315,6 +16357,9 @@ expenseForm?.addEventListener(
       250
     );
 
+    } finally {
+      expenseSaveInFlight = false;
+    }
   }
 );
 
@@ -43109,6 +43154,9 @@ window.MomoLocalTripShare = {
         ...item
       })
     ),
+
+  // Cloud sync must see committed IndexedDB records, not a stale UI snapshot.
+  getStoredExpenses: () => getAllRecords(STORES.expenses),
 
   getExpenses: () =>
     expenses.map(
