@@ -1,0 +1,16 @@
+name: Temporary Momo Recovery Safeguard QA
+on:
+  push:
+    branches: [fix/momo-trip-expense-recovery-safety-20261021]
+jobs:
+  browser-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --no-save --no-package-lock playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/qa-recovery-safeguard.cjs
