@@ -12588,6 +12588,35 @@ function renderTripDailyBudgetSection(trip, tripExpenses) {
   </section>`;
 }
 
+// Only inspect raw records. Never merge or hide entries based on their
+// title, amount, or shared identity; they may be legitimate purchases.
+function renderTripExpenseAudit(tripExpenses) {
+  const ids = new Map();
+  for (const expense of tripExpenses) {
+    if (!expense.sharedTripCode || !expense.sharedExpenseId) continue;
+    const key = JSON.stringify([expense.sharedTripCode, expense.sharedExpenseId]);
+    if (!ids.has(key)) ids.set(key, []);
+    ids.get(key).push(expense);
+  }
+  const groups = [...ids.values()].filter((items) => items.length > 1);
+  if (!groups.length) return "";
+  const count = groups.reduce((total, items) => total + items.length - 1, 0);
+  return `<details class="trip-dashboard-section" data-trip-sync-audit>
+    <summary><strong>Review ${count} possible synced ${count === 1 ? "copy" : "copies"}</strong></summary>
+    <p class="muted">These are separate saved records sharing a sync ID.
+      Every record remains visible and counted; Momo will not automatically
+      delete, hide, or merge them. Compare them with your backup before changing anything.</p>
+    <div class="trip-dashboard-expense-list">
+      ${groups.map((items) => `<div class="trip-dashboard-category">
+        <strong>${items.length} saved entries with one shared ID</strong>
+        ${items.map((item) => `<p>${escapeHTML(item.title || "Untitled")} ·
+          ${formatCurrency(Number(item.amount || 0), item.currency || "PHP")} ·
+          ${escapeHTML(item.date || "")}</p>`).join("")}
+      </div>`).join("")}
+    </div>
+  </details>`;
+}
+
 function renderTripDashboard(
   trip
 ) {
@@ -13438,6 +13467,7 @@ function renderTripDashboard(
 
     </section>
 
+    ${renderTripExpenseAudit(tripExpenses)}
 
     <div class="trip-dashboard-bottom-actions">
 
@@ -15840,6 +15870,8 @@ saveFavoriteButton?.addEventListener(
 // SAVE EXPENSE
 // ========================================
 
+let expenseSaveInFlight = false;
+
 expenseForm?.addEventListener(
   "submit",
   async (
@@ -15847,6 +15879,11 @@ expenseForm?.addEventListener(
   ) => {
 
     event.preventDefault();
+
+    // Both Save controls submit the same form. Ignore overlapping taps.
+    if (expenseSaveInFlight) return;
+    expenseSaveInFlight = true;
+    try {
 
 
     if (
@@ -16315,6 +16352,9 @@ expenseForm?.addEventListener(
       250
     );
 
+    } finally {
+      expenseSaveInFlight = false;
+    }
   }
 );
 
@@ -40639,6 +40679,18 @@ function renderAll() {
     }
   );
 
+  // A shared expense can arrive while the Trip Dashboard is open.
+  // Refresh its values as well as the underlying Trips screen.
+  if (tripDashboardModal && !tripDashboardModal.hidden && activeTripDashboardId) {
+    const selectedTrip = trips.find((item) => item.id === activeTripDashboardId);
+    if (selectedTrip) {
+      const card = tripDashboardModal.querySelector(".trip-dashboard-card");
+      const previousScroll = card?.scrollTop || 0;
+      safelyRenderSection("Trip dashboard", () => renderTripDashboard(selectedTrip));
+      if (card) card.scrollTop = previousScroll;
+    }
+  }
+
 
   if (
     failedSections >
@@ -43109,6 +43161,9 @@ window.MomoLocalTripShare = {
         ...item
       })
     ),
+
+  // Always read committed records for cloud sync; cached UI may be stale.
+  getStoredExpenses: () => getAllRecords(STORES.expenses),
 
   getExpenses: () =>
     expenses.map(
