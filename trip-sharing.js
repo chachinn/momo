@@ -439,12 +439,20 @@
   async function applyRemoteExpenses(trip, docs) {
     const api = localApi();
     if (!api || !trip?.sharedTripCode) return;
-    const allExpenses = api.getExpenses?.() || [];
-    const bySharedId = new Map(
-      allExpenses
-        .filter((expense) => expense.sharedTripCode === trip.sharedTripCode && expense.sharedExpenseId)
-        .map((expense) => [expense.sharedExpenseId, expense])
-    );
+    // A Firestore echo can arrive after an IndexedDB write but before the UI
+    // reload; using the cached array here could create a second local copy.
+    const allExpenses = await (api.getStoredExpenses?.() || api.getExpenses?.() || []);
+    const bySharedId = new Map();
+    for (const expense of allExpenses) {
+      if (expense.sharedTripCode !== trip.sharedTripCode || !expense.sharedExpenseId) continue;
+      const existing = bySharedId.get(expense.sharedExpenseId);
+      const newer = Number(expense.sharedUpdatedAtMs || 0) > Number(existing?.sharedUpdatedAtMs || 0);
+      const original = expense.id === expense.sharedExpenseId && existing?.id !== existing?.sharedExpenseId;
+      if (!existing || newer || (original &&
+          Number(expense.sharedUpdatedAtMs || 0) === Number(existing.sharedUpdatedAtMs || 0))) {
+        bySharedId.set(expense.sharedExpenseId, expense);
+      }
+    }
 
     remoteApplyInFlight = true;
     let changed = false;
@@ -455,7 +463,7 @@
         const existing = bySharedId.get(sharedExpenseId) || null;
         const remoteTime = Number(remote.updatedAtMs || 0);
         const localTime = Number(existing?.sharedUpdatedAtMs || 0);
-        if (existing && localTime > remoteTime) continue;
+        if (existing && localTime >= remoteTime) continue;
 
         if (remote.deleted) {
           if (existing) {
