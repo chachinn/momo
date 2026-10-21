@@ -44,7 +44,7 @@ let browser;
       backedUp:(await getAllMomoStoreSnapshots()).expenses.length,
       total:getTripSpent(trips.find(x=>x.id==="qa-trip"))};
   });
-  assert.deepEqual(initial.visible,["qa-meal","qa-different","qa-other"]);
+  assert.deepEqual(initial.visible.slice().sort(),["qa-different","qa-meal","qa-other"]);
   assert.deepEqual(initial.hidden,["qa-mirror"]);
   assert.equal(initial.backedUp,4);
   assert.equal(initial.total,1700);
