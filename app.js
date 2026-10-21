@@ -985,57 +985,6 @@ async function performCleanStartIfNeeded() {
 // LOAD ALL DATA
 // ========================================
 
-
-/* Shared copies are never removed from IndexedDB. Matching copies with
-   different content must remain visible. Exact mirror copies remain available
-   for review below the Trip Dashboard expense list. */
-let hiddenSharedExpenseCopies = [];
-function sharedExpenseContentKey(expense) {
-  return JSON.stringify([
-    String(expense.title || ""), Number(expense.amount || 0),
-    String(expense.currency || ""), String(expense.date || ""),
-    String(expense.category || ""), String(expense.location || ""),
-    String(expense.notes || ""), String(expense.paymentMethod || ""),
-    String(expense.otherPaymentMethod || ""), expense.tags || [],
-    String(expense.photo || "")
-  ]);
-}
-function collapseSharedTripExpenseMirrors(records) {
-  const result = [];
-  const seen = new Map();
-  const hidden = [];
-  for (const expense of records) {
-    const key = expense.sharedTripCode && expense.sharedExpenseId
-      ? JSON.stringify([
-          expense.sharedTripCode, expense.sharedExpenseId,
-          sharedExpenseContentKey(expense)
-        ]) : "";
-    if (!key) {
-      result.push(expense);
-      continue;
-    }
-    const index = seen.get(key);
-    if (index === undefined) {
-      seen.set(key, result.length);
-      result.push(expense);
-      continue;
-    }
-    const previous = result[index];
-    const time = Number(expense.sharedUpdatedAtMs || 0);
-    const previousTime = Number(previous.sharedUpdatedAtMs || 0);
-    if (time > previousTime ||
-      (time === previousTime && expense.id === expense.sharedExpenseId &&
-       previous.id !== previous.sharedExpenseId)) {
-      hidden.push(previous);
-      result[index] = expense;
-    } else {
-      hidden.push(expense);
-    }
-  }
-  hiddenSharedExpenseCopies = hidden;
-  return result;
-}
-
 async function loadAppData() {
 
   let settingsRecords = [];
@@ -1087,9 +1036,6 @@ async function loadAppData() {
     )
 
   ]);
-
-  // Reconcile shared-trip display without deleting anything from IndexedDB.
-  expenses = collapseSharedTripExpenseMirrors(expenses);
 
 
   const favoriteSetting =
@@ -12642,52 +12588,6 @@ function renderTripDailyBudgetSection(trip, tripExpenses) {
   </section>`;
 }
 
-function renderSavedSharedTripCopies(trip) {
-  const copies = hiddenSharedExpenseCopies.filter((item) => item.tripId === trip.id);
-  if (!copies.length) return "";
-  return `<details class="trip-dashboard-section" open>
-    <summary><strong>Other saved copies (${copies.length})</strong></summary>
-    <p class="muted">These records are still saved on this device. They are shown
-      separately to avoid counting identical synced copies twice. No records
-      have been deleted or changed.</p>
-    <div class="trip-dashboard-expense-list">
-      ${copies.map((item) => `<div class="trip-dashboard-category">
-        <div class="trip-dashboard-category-top">
-          <strong>${escapeHTML(item.title || "Untitled expense")}</strong>
-          <strong>${formatCurrency(item.amount, item.currency || trip.currency)}</strong>
-        </div>
-        <small>${escapeHTML(item.date || "")} · ${escapeHTML(item.category || "Other")}</small>
-        <small> · ${escapeHTML(item.paymentMethod || "")}</small>
-        ${item.notes ? `<p>${escapeHTML(item.notes)}</p>` : ""}
-      </div>`).join("")}
-    </div>
-  </details>`;
-}
-
-function renderCloudDeletedTripEntries(trip) {
-  const candidates = window.MomoTripSharing?.getRecoverableExpenses?.(trip) || [];
-  if (!candidates.length) return "";
-  return `<details class="trip-dashboard-section" open>
-    <summary><strong>Cloud-deleted entries available for review (${candidates.length})</strong></summary>
-    <p class="muted">These are previously shared entries still readable from
-    cloud history. They are NOT included in your totals. Nothing has been
-    restored automatically. Only restore an item if you recognize it as missing.</p>
-    <div class="trip-dashboard-expense-list">
-      ${candidates.map((item) => `<div class="trip-dashboard-category">
-        <div class="trip-dashboard-category-top">
-          <strong>${escapeHTML(item.title)}</strong>
-          <strong>${formatCurrency(item.amount, item.currency)}</strong>
-        </div>
-        <small>${escapeHTML(item.date)} · ${escapeHTML(item.category)}</small>
-        <button type="button" class="secondary-btn"
-          data-recover-shared-expense="${escapeHTML(item.expenseId)}">
-          Restore this entry
-        </button>
-      </div>`).join("")}
-    </div>
-  </details>`;
-}
-
 function renderTripDashboard(
   trip
 ) {
@@ -13538,8 +13438,6 @@ function renderTripDashboard(
 
     </section>
 
-    ${renderSavedSharedTripCopies(trip)}
-    ${renderCloudDeletedTripEntries(trip)}
 
     <div class="trip-dashboard-bottom-actions">
 
@@ -13563,32 +13461,6 @@ function renderTripDashboard(
 
 
   attachExpenseDetailActions();
-
-  tripDashboardBody.querySelectorAll("[data-recover-shared-expense]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      const okay = window.confirm(
-        "Restore this saved cloud entry as a NEW trip expense? Nothing else will be deleted or replaced."
-      );
-      if (!okay) { button.disabled = false; return; }
-      try {
-        const restored = await window.MomoTripSharing?.restoreRecoverableExpense?.(
-          trip, button.dataset.recoverSharedExpense
-        );
-        if (restored) {
-          showToast("Trip expense restored locally ✨");
-          renderTripDashboard(trips.find((item) => item.id === trip.id) || trip);
-        } else {
-          showToast("Entry already restored or no longer available.");
-          button.disabled = false;
-        }
-      } catch (error) {
-        console.warn("Could not restore trip expense:", error);
-        showToast("Could not restore this entry.");
-        button.disabled = false;
-      }
-    });
-  });
 
   tripDashboardBody.querySelector(".trip-daily-budget-edit")?.addEventListener("click", () => {
     closeTripDashboard();
@@ -15968,8 +15840,6 @@ saveFavoriteButton?.addEventListener(
 // SAVE EXPENSE
 // ========================================
 
-let expenseSaveInFlight = false;
-
 expenseForm?.addEventListener(
   "submit",
   async (
@@ -15977,11 +15847,6 @@ expenseForm?.addEventListener(
   ) => {
 
     event.preventDefault();
-
-    // Both Save controls share a single in-flight submission.
-    if (expenseSaveInFlight) return;
-    expenseSaveInFlight = true;
-    try {
 
 
     if (
@@ -16450,9 +16315,6 @@ expenseForm?.addEventListener(
       250
     );
 
-    } finally {
-      expenseSaveInFlight = false;
-    }
   }
 );
 
@@ -43247,9 +43109,6 @@ window.MomoLocalTripShare = {
         ...item
       })
     ),
-
-  // Cloud sync must see committed IndexedDB records, not a stale UI snapshot.
-  getStoredExpenses: () => getAllRecords(STORES.expenses),
 
   getExpenses: () =>
     expenses.map(
