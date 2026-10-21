@@ -327,7 +327,8 @@
   }
 
   async function onExpenseSaved(expense, previous) {
-    if (remoteApplyInFlight) return;
+    // This handler only runs for explicit local edits, never cloud imports.
+    // Do not drop a user save merely because a snapshot is being processed.
 
     if (previous?.sharedTripCode && previous.sharedTripCode !== expense?.sharedTripCode) {
       await sendTombstoneOrQueue(previous);
