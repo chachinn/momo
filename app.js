@@ -233,7 +233,8 @@ let jpyPhpMarket = {
   rate: JPY_PHP_FALLBACK_RATE,
   date: "2026-11-18",
   fetchedAt: 0,
-  fallback: true
+  fallback: true,
+  cached: false
 };
 let jpyPhpMarketRequest = null;
 
@@ -258,7 +259,8 @@ function loadCachedJpyPhpMarketRate() {
         rate: Number(item.rate),
         date: String(item.date),
         fetchedAt: Number(item.fetchedAt) || 0,
-        fallback: false
+        fallback: false,
+        cached: true
       };
     }
   } catch (error) {
@@ -5261,7 +5263,8 @@ function renderJpyPhpRateControls() {
   status.textContent = (jpyPhpRateMode === "custom"
     ? "Your card rate · Market ≈ ₱" + rawMarket
     : "Market default") + " · " + marketSource + " · " + jpyPhpMarket.date +
-    (stale ? " · cached" : "") + (jpyPhpMarket.fallback ? " · offline estimate" : "");
+    ((stale || jpyPhpMarket.cached) ? " · cached" : "") +
+    (jpyPhpMarket.fallback ? " · offline estimate" : "");
   if (input && document.activeElement !== input) {
     input.value = jpyPhpRateMode === "custom" ? String(jpyPhpCustomRate) : "";
   }
@@ -5317,7 +5320,8 @@ async function fetchCurrentJpyPhpRate(force = false) {
         rate: Number(data.rate),
         date: String(data.date),
         fetchedAt: Date.now(),
-        fallback: false
+        fallback: false,
+        cached: false
       };
       try {
         localStorage.setItem(JPY_PHP_MARKET_CACHE_KEY, JSON.stringify(jpyPhpMarket));
@@ -5351,6 +5355,7 @@ function initializeJpyPhpRateControls() {
   loadCachedJpyPhpMarketRate();
   applyJpyPhpRate();
   renderJpyPhpRateControls();
+  updateConverterRateText();
 
   document.getElementById("saveJpyPhpCustomRate")?.addEventListener("click", async () => {
     const input = document.getElementById("jpyPhpCustomRate");
@@ -5407,8 +5412,9 @@ function initializeJpyPhpRateControls() {
       void fetchCurrentJpyPhpRate();
     }
   });
-  // Rate lookup never blocks Momo startup or an offline expense save.
-  void fetchCurrentJpyPhpRate();
+  // Check the provider at each launch, even if a cached rate is recent.
+  // Cached data remains visible immediately while the network responds.
+  void fetchCurrentJpyPhpRate(true);
 }
 
 function initializeConverter() {
