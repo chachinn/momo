@@ -220,11 +220,57 @@ const PHOTO_JPEG_QUALITY =
 // CURRENCY
 // ========================================
 
+// Offline fallback: BSP JPY/PHP reference published 18 November 2026.
+// Online market mode replaces this with the latest published reference.
+const JPY_PHP_FALLBACK_RATE = 0.4005;
+const JPY_PHP_PREFERENCE_KEY = "jpy_php_rate_preference";
+const JPY_PHP_MARKET_CACHE_KEY = "momo_jpy_php_market_reference_v1";
+const JPY_PHP_MARKET_URL = "https://api.frankfurter.dev/v2/rate/jpy/php";
+const JPY_PHP_RATE_CACHE_AGE = 6 * 60 * 60 * 1000;
+let jpyPhpRateMode = "market";
+let jpyPhpCustomRate = null;
+let jpyPhpMarket = {
+  rate: JPY_PHP_FALLBACK_RATE,
+  date: "2026-11-18",
+  fetchedAt: 0,
+  fallback: true
+};
+let jpyPhpMarketRequest = null;
+
+function isValidJpyPhpRate(rate) {
+  const value = Number(rate);
+  return Number.isFinite(value) && value > 0.001 && value < 10;
+}
+function effectiveJpyPhpRate() {
+  return jpyPhpRateMode === "custom" && isValidJpyPhpRate(jpyPhpCustomRate)
+    ? jpyPhpCustomRate : jpyPhpMarket.rate;
+}
+function applyJpyPhpRate() {
+  // Momo stores foreign-currency units per peso; the input is pesos per yen.
+  EXCHANGE_RATES.JPY = 1 / effectiveJpyPhpRate();
+}
+function loadCachedJpyPhpMarketRate() {
+  try {
+    const item = JSON.parse(localStorage.getItem(JPY_PHP_MARKET_CACHE_KEY) || "null");
+    if (item && isValidJpyPhpRate(item.rate) &&
+        /^\d{4}-\d{2}-\d{2}$/.test(String(item.date || ""))) {
+      jpyPhpMarket = {
+        rate: Number(item.rate),
+        date: String(item.date),
+        fetchedAt: Number(item.fetchedAt) || 0,
+        fallback: false
+      };
+    }
+  } catch (error) {
+    console.warn("Momo FX cache unavailable:", error);
+  }
+}
+
 const EXCHANGE_RATES = {
 
   PHP: 1,
 
-  JPY: 2.56,
+  JPY: 1 / JPY_PHP_FALLBACK_RATE,
 
   USD: 0.0175,
 
@@ -1037,6 +1083,16 @@ async function loadAppData() {
 
   ]);
 
+  // Existing settings store participates in Momo's local/cloud backup.
+  // No expense or trip data is migrated or rewritten.
+  const jpyRatePreference = settingsRecords.find((item) =>
+    item?.key === JPY_PHP_PREFERENCE_KEY
+  )?.value;
+  jpyPhpRateMode = jpyRatePreference?.mode === "custom" &&
+    isValidJpyPhpRate(jpyRatePreference.rate) ? "custom" : "market";
+  jpyPhpCustomRate = jpyPhpRateMode === "custom"
+    ? Number(jpyRatePreference.rate) : null;
+  applyJpyPhpRate();
 
   const favoriteSetting =
     settingsRecords.find(
