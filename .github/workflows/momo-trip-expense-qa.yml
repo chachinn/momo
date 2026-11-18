@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'app.js'
+      - 'index.html'
+      - 'styles.css'
       - 'trip-sharing.js'
       - 'service-worker.js'
       - 'scripts/qa-trip-expenses.cjs'
@@ -12,6 +14,8 @@ on:
     branches: [main, fix/momo-trip-expense-sync-safety-qa-20261021]
     paths:
       - 'app.js'
+      - 'index.html'
+      - 'styles.css'
       - 'trip-sharing.js'
       - 'service-worker.js'
       - 'scripts/qa-trip-expenses.cjs'
@@ -19,7 +23,7 @@ on:
       - '.github/workflows/momo-trip-expense-qa.yml'
 jobs:
   synthetic-browser-regression:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
