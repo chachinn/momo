@@ -1572,7 +1572,35 @@
           <div class="converter-rate">
             <span>Exchange rate</span>
             <small id="converterRateText">—</small>
+            <button id="openJpyPhpRateSettings" type="button" class="jpy-rate-shortcut"
+              aria-label="Set JPY to PHP exchange rate">Set rate</button>
           </div>
+          <details id="jpyPhpRateSettings" class="jpy-rate-settings">
+            <summary>JPY → PHP rate settings</summary>
+            <div class="jpy-rate-settings-body">
+              <p id="jpyPhpActiveRate" class="jpy-rate-active">¥1 = ₱0.400500</p>
+              <p id="jpyPhpRateStatus" class="jpy-rate-status" aria-live="polite">
+                Market default · BSP reference · 2026-11-18
+              </p>
+              <div class="jpy-rate-controls">
+                <button id="useJpyPhpMarketRate" class="jpy-rate-action is-selected"
+                  type="button">Use market rate</button>
+                <button id="refreshJpyPhpRate" class="jpy-rate-action"
+                  type="button">Refresh rate</button>
+              </div>
+              <label class="jpy-rate-field" for="jpyPhpCustomRate">
+                <span>Custom card rate (PHP for ¥1)</span>
+                <input id="jpyPhpCustomRate" type="number" min="0.001" max="10"
+                  step="any" inputmode="decimal" placeholder="e.g. 0.40855"
+                  autocomplete="off">
+              </label>
+              <button id="saveJpyPhpCustomRate" class="jpy-rate-action jpy-rate-save"
+                type="button">Save custom rate</button>
+              <p class="jpy-rate-footnote">Market mode uses Frankfurter's latest published
+                daily reference when online. Banks and card fees may differ.
+                Changing the rate updates estimated totals, never your saved yen amounts.</p>
+            </div>
+          </details>
         </section>
 
         <div id="tripList"></div>
