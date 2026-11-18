@@ -976,6 +976,86 @@ button {
 
 /* CALCULATOR CONVERTER */
 
+/* JPY/PHP exchange-rate preferences: responsive, non-destructive. */
+.jpy-rate-shortcut {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--rose);
+  padding: 5px 10px;
+  min-height: 28px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.jpy-rate-settings {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,.9);
+  padding: 10px 12px;
+}
+.jpy-rate-settings > summary {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.jpy-rate-settings-body { display: grid; gap: 10px; margin-top: 12px; }
+.jpy-rate-active {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.jpy-rate-status, .jpy-rate-footnote {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-soft);
+  margin: 0;
+}
+.jpy-rate-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.jpy-rate-action {
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 12px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.jpy-rate-action.is-selected, .jpy-rate-save {
+  background: var(--blush);
+  color: var(--rose);
+  border-color: var(--rose);
+}
+.jpy-rate-action:disabled { opacity: .5; cursor: default; }
+.jpy-rate-field { display: grid; gap: 6px; font-size: 12px; font-weight: 700; }
+.jpy-rate-field input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 16px;
+  color: var(--text);
+}
+.screen[data-screen="trips"] #inlineConverter:not(.is-expanded) .jpy-rate-settings {
+  display: none;
+}
+.screen[data-screen="trips"] #inlineConverter:not(.is-expanded) .jpy-rate-shortcut {
+  min-height: 25px;
+  padding: 3px 7px;
+  font-size: 9px;
+}
+
+
 .inline-converter {
   scroll-margin-top: 85px;
 }
