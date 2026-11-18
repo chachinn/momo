@@ -4564,13 +4564,14 @@ function updateConverterRateText() {
     );
 
 
+  const isJpyPhpPair = (currencyA === "JPY" && currencyB === "PHP") ||
+    (currencyA === "PHP" && currencyB === "JPY");
+  const rateText = isJpyPhpPair
+    ? rate.toFixed(6)
+    : formatPlainNumber(rate, currencyB);
   converterRateText.textContent =
     `${CURRENCY_INFO[currencyA].symbol}1 ≈ ` +
-    `${CURRENCY_INFO[currencyB].symbol}` +
-    `${formatPlainNumber(
-      rate,
-      currencyB
-    )}`;
+    `${CURRENCY_INFO[currencyB].symbol}` + rateText;
 
 }
 
@@ -5242,6 +5243,173 @@ document
     }
   );
 
+
+// JPY/PHP market mode uses a published central-bank reference rate, not
+// the actual settlement rate charged by an individual bank/card.
+function renderJpyPhpRateControls() {
+  const status = document.getElementById("jpyPhpRateStatus");
+  const active = document.getElementById("jpyPhpActiveRate");
+  const input = document.getElementById("jpyPhpCustomRate");
+  if (!status || !active) return;
+  const rawMarket = Number(jpyPhpMarket.rate).toFixed(6);
+  const marketSource = jpyPhpMarket.fallback
+    ? "BSP fallback reference"
+    : "Frankfurter daily reference";
+  const stale = jpyPhpMarket.fetchedAt &&
+    Date.now() - jpyPhpMarket.fetchedAt >= JPY_PHP_RATE_CACHE_AGE;
+  active.textContent = "¥1 = ₱" + Number(effectiveJpyPhpRate()).toFixed(6);
+  status.textContent = (jpyPhpRateMode === "custom"
+    ? "Your card rate · Market ≈ ₱" + rawMarket
+    : "Market default") + " · " + marketSource + " · " + jpyPhpMarket.date +
+    (stale ? " · cached" : "") + (jpyPhpMarket.fallback ? " · offline estimate" : "");
+  if (input && document.activeElement !== input) {
+    input.value = jpyPhpRateMode === "custom" ? String(jpyPhpCustomRate) : "";
+  }
+  document.getElementById("saveJpyPhpCustomRate")?.classList.toggle(
+    "is-selected", jpyPhpRateMode === "custom"
+  );
+  document.getElementById("useJpyPhpMarketRate")?.classList.toggle(
+    "is-selected", jpyPhpRateMode !== "custom"
+  );
+}
+function refreshMomoJpyPhpConversions() {
+  applyJpyPhpRate();
+  renderJpyPhpRateControls();
+  if (converterCurrencyA && converterCurrencyB) {
+    // Preserve the side the person is typing into.
+    updateConverterBySide(converterEditingSide);
+    updateConverterRateText();
+  }
+  updateExpenseConversion();
+  renderAll();
+}
+async function fetchCurrentJpyPhpRate(force = false) {
+  if (jpyPhpMarketRequest) return jpyPhpMarketRequest;
+  if (!force && jpyPhpMarket.fetchedAt &&
+      Date.now() - jpyPhpMarket.fetchedAt < JPY_PHP_RATE_CACHE_AGE) {
+    renderJpyPhpRateControls();
+    return jpyPhpMarket.rate;
+  }
+  const refresh = document.getElementById("refreshJpyPhpRate");
+  if (refresh) refresh.disabled = true;
+  jpyPhpMarketRequest = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(JPY_PHP_MARKET_URL, {
+        cache: "no-store", signal: controller.signal
+      });
+      if (!response.ok) throw new Error("Reference rate HTTP " + response.status);
+      const data = await response.json();
+      if (String(data.base || "").toUpperCase() !== "JPY" ||
+          String(data.quote || "").toUpperCase() !== "PHP" ||
+          !isValidJpyPhpRate(data.rate) ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(String(data.date || ""))) {
+        throw new Error("Unusable market rate response");
+      }
+      // A delayed provider must never regress a newer published rate.
+      if (!jpyPhpMarket.fallback && String(data.date) < jpyPhpMarket.date) {
+        renderJpyPhpRateControls();
+        return jpyPhpMarket.rate;
+      }
+      const before = effectiveJpyPhpRate();
+      jpyPhpMarket = {
+        rate: Number(data.rate),
+        date: String(data.date),
+        fetchedAt: Date.now(),
+        fallback: false
+      };
+      try {
+        localStorage.setItem(JPY_PHP_MARKET_CACHE_KEY, JSON.stringify(jpyPhpMarket));
+      } catch (error) {
+        console.warn("Momo could not cache the reference rate:", error);
+      }
+      if (Math.abs(effectiveJpyPhpRate() - before) > 1e-12) {
+        refreshMomoJpyPhpConversions();
+      } else {
+        renderJpyPhpRateControls();
+      }
+      return jpyPhpMarket.rate;
+    } catch (error) {
+      console.warn("Market rate unavailable; using last known reference:", error);
+      renderJpyPhpRateControls();
+      const status = document.getElementById("jpyPhpRateStatus");
+      if (status) status.textContent += " · Latest update unavailable";
+      return jpyPhpMarket.rate;
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+  try {
+    return await jpyPhpMarketRequest;
+  } finally {
+    jpyPhpMarketRequest = null;
+    if (refresh) refresh.disabled = false;
+  }
+}
+function initializeJpyPhpRateControls() {
+  loadCachedJpyPhpMarketRate();
+  applyJpyPhpRate();
+  renderJpyPhpRateControls();
+
+  document.getElementById("saveJpyPhpCustomRate")?.addEventListener("click", async () => {
+    const input = document.getElementById("jpyPhpCustomRate");
+    const rate = Number(input?.value);
+    if (!input?.value.trim() || !isValidJpyPhpRate(rate)) {
+      showToast("Enter a valid PHP rate for ¥1.");
+      input?.focus();
+      return;
+    }
+    try {
+      await putRecord(STORES.settings, {
+        key: JPY_PHP_PREFERENCE_KEY,
+        value: {mode: "custom", rate},
+        updatedAt: new Date().toISOString()
+      });
+      jpyPhpRateMode = "custom";
+      jpyPhpCustomRate = rate;
+      refreshMomoJpyPhpConversions();
+      showToast("Custom card exchange rate saved ✨");
+    } catch (error) {
+      console.warn("Could not save custom exchange rate:", error);
+      showToast("Could not save exchange rate.");
+    }
+  });
+  document.getElementById("useJpyPhpMarketRate")?.addEventListener("click", async () => {
+    try {
+      await putRecord(STORES.settings, {
+        key: JPY_PHP_PREFERENCE_KEY,
+        value: {mode: "market"},
+        updatedAt: new Date().toISOString()
+      });
+      jpyPhpRateMode = "market";
+      jpyPhpCustomRate = null;
+      refreshMomoJpyPhpConversions();
+      showToast("Using the latest available market reference ✨");
+      void fetchCurrentJpyPhpRate(true);
+    } catch (error) {
+      console.warn("Could not select market rate:", error);
+      showToast("Could not change exchange rate.");
+    }
+  });
+  document.getElementById("refreshJpyPhpRate")?.addEventListener("click", () => {
+    void fetchCurrentJpyPhpRate(true);
+  });
+  document.getElementById("openJpyPhpRateSettings")?.addEventListener("click", () => {
+    setTravelConverterExpanded(true);
+    const panel = document.getElementById("jpyPhpRateSettings");
+    if (panel) panel.open = true;
+    panel?.scrollIntoView({behavior: "smooth", block: "nearest"});
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && jpyPhpRateMode === "market" &&
+        Date.now() - jpyPhpMarket.fetchedAt >= JPY_PHP_RATE_CACHE_AGE) {
+      void fetchCurrentJpyPhpRate();
+    }
+  });
+  // Rate lookup never blocks Momo startup or an offline expense save.
+  void fetchCurrentJpyPhpRate();
+}
 
 function initializeConverter() {
 
@@ -43032,6 +43200,11 @@ async function initializeApp() {
   safelyInitializeInterfaceStep(
     "Currency converter",
     initializeConverter
+  );
+
+  safelyInitializeInterfaceStep(
+    "JPY/PHP exchange rate",
+    initializeJpyPhpRateControls
   );
 
 
