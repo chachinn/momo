@@ -7,6 +7,10 @@ const fs=require("node:fs"),http=require("node:http"),path=require("node:path");
 const {chromium}=require("playwright");
 const root=process.cwd();
 const mime={".js":"application/javascript",".html":"text/html",".css":"text/css",".json":"application/json"};
+function assertMoney(actual, expected, label="currency conversion") {
+  assert.ok(Math.abs(actual - expected) < 0.001,
+    label + ": expected " + expected + ", got " + actual);
+}
 const server=http.createServer((req,res)=>{
   const route=req.url.split("?")[0]==="/"?"/index.html":decodeURIComponent(req.url.split("?")[0]);
   const file=path.resolve(root,"."+route);
@@ -36,7 +40,7 @@ let browser;
    Math.abs(effectiveJpyPhpRate()-.39970)<1e-8, null,{timeout:20000});
  assert.equal(await page.evaluate(()=>jpyPhpRateMode),"market","Fresh install must default to market");
  assert.ok((await page.locator("#jpyPhpRateStatus").innerText()).includes("Frankfurter"));
- assert.equal(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),3997);
+ assertMoney(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),3997);
  assert.equal(await page.evaluate(()=>Math.round(convertCurrency(3997,"PHP","JPY"))),10000);
  assert.equal(await page.evaluate(()=>EXCHANGE_RATES.USD),0.0175,"Other currency rates unchanged");
  assert.match(await page.locator("#converterRateText").innerText(),/0\.399700/);
@@ -73,7 +77,7 @@ let browser;
    };
  });
  assert.equal(baseline.expense.amount,10000);
- assert.equal(await page.evaluate(()=>getTripSpent(trips.find(t=>t.id==="test-trip"))),3997);
+ assertMoney(await page.evaluate(()=>getTripSpent(trips.find(t=>t.id==="test-trip"))),3997);
 
  await page.evaluate(()=>{showScreen("trips");renderTrips();document.getElementById("contextTipModal")?.remove()});
  await page.locator("#openJpyPhpRateSettings").click();
@@ -84,8 +88,8 @@ let browser;
  await page.locator("#saveJpyPhpCustomRate").click();
  await page.waitForFunction(()=>jpyPhpRateMode==="custom" &&
    Math.abs(effectiveJpyPhpRate()-.40855)<1e-10);
- assert.equal(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),4085.5);
- assert.equal(await page.evaluate(()=>getTripSpent(trips.find(t=>t.id==="test-trip"))),4085.5);
+ assertMoney(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),4085.5);
+ assertMoney(await page.evaluate(()=>getTripSpent(trips.find(t=>t.id==="test-trip"))),4085.5);
  assert.match(await page.locator("#jpyPhpRateStatus").innerText(),/Your card rate/);
  assert.match(await page.locator("#converterRateText").innerText(),/0\.408550/);
  const pref=await page.evaluate(async()=>(
@@ -110,7 +114,7 @@ let browser;
  await page.waitForFunction(()=>jpyPhpRateMode==="custom" &&
    Math.abs(jpyPhpMarket.rate-.3988)<1e-8,null,{timeout:20000});
  assert.equal(await page.evaluate(()=>effectiveJpyPhpRate()),.40855);
- assert.equal(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),4085.5);
+ assertMoney(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),4085.5);
  await page.evaluate(()=>{showScreen("trips");renderTrips();document.getElementById("contextTipModal")?.remove()});
  await page.locator("#openJpyPhpRateSettings").click();
  assert.match(await page.locator("#jpyPhpRateStatus").innerText(),/Market ≈ ₱0\.398800/);
@@ -119,7 +123,7 @@ let browser;
  await page.locator("#useJpyPhpMarketRate").click();
  await page.waitForFunction(()=>jpyPhpRateMode==="market" &&
    Math.abs(effectiveJpyPhpRate()-.3988)<1e-8);
- assert.equal(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),3988);
+ assertMoney(await page.evaluate(()=>convertCurrency(10000,"JPY","PHP")),3988);
  const resetPref=await page.evaluate(async()=>(
    await getAllMomoStoreSnapshots()).settings.find(x=>x.key==="jpy_php_rate_preference"));
  assert.deepEqual(resetPref.value,{mode:"market"});
